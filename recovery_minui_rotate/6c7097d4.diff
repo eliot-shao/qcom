@@ -1,0 +1,176 @@
+From 6c7097d4aafd3a4145d1f19b64f7d3bfdc1b9eaf Mon Sep 17 00:00:00 2001
+From: shaomingliang <shaomingliang@meigsmart.com>
+Date: Wed, 26 Oct 2016 19:44:48 +0800
+Subject: [PATCH] [BugID]4566 [SLM753_pop-P800][Description]Shutdown charging icon and recovery page is vertical, 90 degrees counterclockwise rotation[Solution] Modify recovery minui
+
+Change-Id: I8f8861c1ad293b810e65c7a91cb486adb1a5b5b3
+---
+
+diff --git a/bootable/recovery/minui/graphics.c b/bootable/recovery/minui/graphics.c
+old mode 100644
+new mode 100755
+index 0999524..83c7dfa
+--- a/bootable/recovery/minui/graphics.c
++++ b/bootable/recovery/minui/graphics.c
+@@ -420,15 +420,16 @@
+         gr_exit();
+         return -1;
+     }
+-
++	//add by eliot shao 2016.10.26
++/*
+     gr_backend = open_adf();
+     if (gr_backend) {
+         gr_draw = gr_backend->init(gr_backend);
+         if (!gr_draw) {
+             gr_backend->exit(gr_backend);
+-        }
++        } 
+     }
+-
++*/ 
+     if (!gr_draw) {
+         gr_backend = open_fbdev();
+         gr_draw = gr_backend->init(gr_backend);
+diff --git a/bootable/recovery/minui/graphics_fbdev.c b/bootable/recovery/minui/graphics_fbdev.c
+old mode 100644
+new mode 100755
+index 6df2726..7402436
+--- a/bootable/recovery/minui/graphics_fbdev.c
++++ b/bootable/recovery/minui/graphics_fbdev.c
+@@ -13,7 +13,7 @@
+  * See the License for the specific language governing permissions and
+  * limitations under the License.
+  */
+-
++ 
+ #include <stdbool.h>
+ #include <stdlib.h>
+ #include <unistd.h>
+@@ -31,6 +31,9 @@
+ 
+ #include "minui.h"
+ #include "graphics.h"
++
++//add by eliot shao 2016.10.26
++#define Rorate_Value    270
+ 
+ static gr_surface fbdev_init(minui_backend*);
+ static gr_surface fbdev_flip(minui_backend*);
+@@ -77,6 +80,65 @@
+     }
+     displayed_buffer = n;
+ }
++
++// add by eliot shao 2016.10.26  rorate
++#if 1
++static GRSurface* gr_canvas = NULL;
++static int rotate_index=-1;
++#define swap(x, y, type) {type z; z=x; x=y; y=z;}
++static void rotate_canvas_init(GRSurface *gr_draw)
++{
++    gr_canvas = (GRSurface*) malloc(sizeof(GRSurface));
++    memcpy(gr_canvas, gr_draw, sizeof(GRSurface));
++
++    //90&270
++    if((Rorate_Value==90)||(Rorate_Value==270)){
++        swap(gr_canvas->width, gr_canvas->height, int);
++        gr_canvas->row_bytes = gr_canvas->width * gr_canvas->pixel_bytes;
++    }
++
++    gr_canvas->data = (unsigned char*) malloc(gr_canvas->height * gr_canvas->row_bytes);
++    memset(gr_canvas->data,  0, gr_canvas->height * gr_canvas->row_bytes);
++}
++
++void rotate_canvas_exit(void)
++{
++    if(gr_canvas) {
++        if(gr_canvas->data)
++            free(gr_canvas->data);
++        free(gr_canvas);
++    }
++    gr_canvas=NULL;
++}
++
++GRSurface *rotate_canvas_get(GRSurface *gr_draw)
++{
++    if(gr_canvas==NULL)
++        rotate_canvas_init(gr_draw);
++    return gr_canvas;
++}
++
++static void rotate_surface_270(GRSurface *dst, GRSurface *src)
++{
++    int v, w, h;
++    unsigned int *src_pixel;
++    unsigned int *dst_pixel;
++
++    for(h=0, v=src->width-1; h<dst->height; h++, v--){
++        for(w=0; w<dst->width; w++){
++            dst_pixel = (unsigned int *)(dst->data + dst->row_bytes*h);
++            src_pixel = (unsigned int *)(src->data + src->row_bytes*w);
++            *(dst_pixel+w) = *(src_pixel+v);
++        }
++    }
++}
++
++void rotate_surface(GRSurface *dst, GRSurface *src)
++{
++    rotate_surface_270(dst, src);
++}
++
++#endif
+ 
+ static gr_surface fbdev_init(minui_backend* backend) {
+     int fd;
+@@ -173,11 +235,16 @@
+ 
+     fbdev_blank(backend, true);
+     fbdev_blank(backend, false);
+-
+-    return gr_draw;
++	//add by eliot shao 2016.10.26
++	return rotate_canvas_get(gr_draw);
++    //return gr_draw;
+ }
+ 
+ static gr_surface fbdev_flip(minui_backend* backend __unused) {
++	
++    // add by eliot shao 2016.10.26
++    rotate_surface(gr_draw, rotate_canvas_get(gr_draw));
++
+     if (double_buffered) {
+ #if defined(RECOVERY_BGRA)
+         // In case of BGRA, do some byte swapping
+@@ -214,12 +281,17 @@
+                gr_draw->height * gr_draw->row_bytes);
+ #endif
+     }
+-    return gr_draw;
++	// add by eliot shao 2016.10.26
++	return rotate_canvas_get(gr_draw);
++    //return gr_draw;
+ }
+ 
+ static void fbdev_exit(minui_backend* backend __unused) {
+     close(fb_fd);
+     fb_fd = -1;
++	
++    // add by eliot shao 2016.10.26
++    rotate_canvas_exit();
+ 
+     if (!double_buffered && gr_draw) {
+         free(gr_draw->data);
+diff --git a/system/core/healthd/healthd_mode_charger.cpp b/system/core/healthd/healthd_mode_charger.cpp
+index 93c7a2d..ade9ef7 100755
+--- a/system/core/healthd/healthd_mode_charger.cpp
++++ b/system/core/healthd/healthd_mode_charger.cpp
+@@ -502,6 +502,8 @@
+     y = (gr_fb_height() + char_height) / 2;
+     android_green();
+     gr_text(x, y, cap_str, 0);
++//add by eliot shao
++	gr_flip();
+ }
+ 
+ static void redraw_screen(struct charger *charger)
