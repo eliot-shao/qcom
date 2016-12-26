@@ -1,0 +1,163 @@
+/* Copyright (c) 2014, The Linux Foundation. All rights reserved.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 and
+ * only version 2 as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ */
+
+/dts-v1/;
+
+#include "msm8916-qrd-skui-slm753-public.dtsi"
+#include "msm8916-memory.dtsi"
+
+/ {
+	model = "Qualcomm Technologies, Inc. MSM 8916 QRD SKUI slm753 public";
+	compatible = "qcom,msm8916-qrd-skui", "qcom,msm8916-qrd", "qcom,msm8916", "qcom,qrd";
+	qcom,board-id = <0x1010b 0x4a>;
+};
+
+&soc {
+	i2c@78b6000{
+			cxn0102@77 {
+				compatible = "qcom,cxn0102";
+				reg = <0x77>;
+				interrupt-parent = <&msm_gpio>;
+        interrupts = <36 1>;
+        cxn-reset-gpios = <&msm_gpio 25 0x00>;
+        cxn-interrupt-gpios = <&msm_gpio 36 0x00>;
+        vdd-supply = <&pm8916_l6>;
+        pinctrl-names = "pmx_ts_active","pmx_ts_suspend";
+        pinctrl-0 = <&ts_int_active &ts_reset_active>;
+        pinctrl-1 = <&ts_int_suspend &ts_reset_suspend>;			
+		};
+	};
+	i2c@78b8000 {
+		smb1360_otg_supply: smb1360-chg-fg@14 {
+			compatible = "qcom,smb1360-chg-fg";
+			reg = <0x14>;
+			interrupt-parent = <&msm_gpio>;
+			interrupts = <113 8>;
+			pinctrl-names = "default";
+			pinctrl-0 = <&smb_int_default>;
+			qcom,chg-inhibit-disabled;
+			//zouwubin modify 2A for parallel charger 2016.03.03
+			qcom,float-voltage-mv = <4300>;
+			qcom,iterm-ma = <200>;
+			qcom,charging-timeout	= <768>;
+			qcom,recharge-thresh-mv = <100>;
+			//zouwubin modify 2A for parallel charger 2016.03.03
+			qcom,thermal-mitigation = <2000 700 600 0>;
+			qcom,fg-auto-recharge-soc = <99>;
+			//zouwubin add for i2c_4 power off 2016.03.01
+            vcc-i2c-supply = <&pm8916_l6>;
+			//zouwubin add for parallel charger 2016.03.03
+            qcom,rsense-10mhom;
+            qcom,parallel-charging-enabled;
+            qcom,max-parallel-current-ma = <630>;
+			regulator-name = "smb1360_otg_vreg";
+			status = "disabled";
+		};
+	};
+
+
+	i2c@78b9000 { /* BLSP1 QUP5 */
+			icn6211@2c {
+						compatible = "qcom,icn6211";
+						reg = <0x2C>;
+						pinctrl-names = "default","sleep";
+						pinctrl-0 = <&icn_default>;
+						pinctrl-1 = <&icn_sleep>;
+						icn,gpio_rstn = <&msm_gpio 21 0x0>;
+						icn,gpio_3V3_en = <&msm_gpio 51 0x0>;
+						icn,gpio_dc_5v_en = <&msm_gpio 50 0x0>;
+						vdd-supply = <&pm8916_l6>;	
+				};
+	};
+	i2c@78b8000 {
+		aw2013@63 {
+			compatible = "awinic,aw2013";
+			reg = <0x63>;
+			//interrupt-parent = <&msm_gpio>;
+			//interrupts = <13 0x2008>;
+			//interrupt-gpios = <&msm_gpio 13 0x00>;
+			//pinctrl-names = "pmx_aw_active","pmx_aw_suspend";
+			//pinctrl-0 = <&aw_int_active>;
+			//pinctrl-1 = <&aw_int_suspend>;
+			status = "ok";
+		};
+	};
+
+	gen-vkeys {
+		compatible = "qcom,gen-vkeys";
+		label = "ft5x06_ts";
+		qcom,disp-maxx = <480>;
+		qcom,disp-maxy = <854>;
+		qcom,panel-maxx = <480>;
+		qcom,panel-maxy = <946>;
+		qcom,key-codes = <139 172 158>;
+		qcom,y-offset = <0>;
+	};
+
+	/* Use pmic to detect usb hotplug temporality add by jason*/
+	usb_detect {
+	   compatible = "qcom,qpnp-usbdetect";
+	   interrupt-parent = <&spmi_bus>;
+	   interrupts = <0x0 0x13 0x1>;
+	   interrupt-names = "vbus_det_irq";
+	};
+};
+&pm8916_l6 {
+      regulator-always-on;
+}; 
+
+&pm8916_chg {
+	status = "ok";
+	//zouwubin add for parallel charger 2016.03.03
+	qcom,vddmax-mv = <4450>;
+	qcom,vddsafe-mv = <4450>;
+	qcom,vinmin-mv = <4350>;
+	qcom,parallel-charger;
+};
+
+&pm8916_bms {
+	status = "ok";
+	qcom,disable-bms;
+};
+
+&usb_otg {
+	qcom,hsusb-otg-mode = <3>;
+	qcom,usbid-gpio = <&msm_gpio 110 0>;
+	/*added by feihu.zhang for OTG function 2016/10/19*/
+	qcom,g320-gpio = <&msm_gpio 118 0>;
+	pinctrl-names = "default";
+	pinctrl-0 = <&usbid_default>;
+	vbus_otg-supply = <&smb1360_otg_supply>;
+};
+
+
+&cdc_ext_pa_lines{
+	qcom,pins = <&gp 114>, <&gp 114>,
+					<&gp 115>, <&gp 116>;
+};
+
+&tpiu_seta_13 {
+       qcom,pins = <&gp 111>;
+};
+
+&tpiu_seta_16 {
+      qcom,pins = <&gp 111>;
+};
+
+&smb_int_pin {
+      qcom,pins = <&gp 113>;
+};
+
+&apds99xx_int_pin {
+     qcom,pins = <&gp 111>;
+};
+

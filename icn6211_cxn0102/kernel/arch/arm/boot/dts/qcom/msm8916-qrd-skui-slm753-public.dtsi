@@ -1,0 +1,225 @@
+/* Copyright (c) 2014, The Linux Foundation. All rights reserved.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 and
+ * only version 2 as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ */
+
+#include "msm8916-qrd.dtsi"
+#include "dsi-panel-otm8019a-fwvga-video.dtsi"
+#include "msm8916-camera-sensor-qrd-skui.dtsi"
+#include "dsi-panel-hx8394a-600x1024-video.dtsi"
+#include "dsi-panel-otm9605-qhd-video.dtsi"
+#include "dsi-panel-hx8389b-qhd-video.dtsi"
+#include "dsi-panel-hx8394f-720p-video.dtsi"
+#include "dsi-panel-hx8394f-zzw500hah-720p-video.dtsi"
+#include "dsi-mipi-2-rgb_1280p_video.dtsi"
+
+&soc {
+	gpio-leds {
+		compatible = "gpio-leds";
+		status = "okay";
+		/*pinctrl-names = "default";
+		pinctrl-0 = <&button_backlight_off>;
+
+		keypad-backlight {
+			gpios = <&msm_gpio 119 0>;
+			label = "button-backlight";
+			linux,default-trigger = "none";
+		};*/
+	};
+
+	ktd253-leds {  /*add by fangchengbing to driver ktd253 backlight ic*/
+		compatible = "ktd253-leds";
+		status = "okay";
+		lcd-backlight {
+			gpios = <&msm_gpio 117 0>;  /*modified by fangchengbing accroding to hw*/
+			label = "wled-backlight-ktd253";
+			linux,default-trigger = "bkl-trigger";
+			default-state = "keep";   /*gpio value will keep prrvious value*/
+		};
+	};
+
+	sound {
+		compatible = "qcom,msm8x16-audio-codec";
+		qcom,model = "msm8x16-skui-snd-card";
+		qcom,msm-snd-card-id = <0>;
+		qcom,msm-ext-pa = "primary";
+		qcom,msm-spk-ext-pa = <&msm_gpio 16 0x0>;
+		qcom,msm-codec-type = "internal";
+		qcom,msm-mbhc-hphl-swh = <0>;
+		qcom,msm-mbhc-gnd-swh = <0>;
+		qcom,msm-mic-clamp-ctl = <0>; /* manual control clamp off */
+		qcom,msm-hs-micbias-type = "internal";
+		qcom,audio-routing =
+			"RX_BIAS", "MCLK",
+			"SPK_RX_BIAS", "MCLK",
+			"INT_LDO_H", "MCLK",
+			"MIC BIAS Internal1", "Handset Mic",
+			"MIC BIAS Internal2", "Headset Mic",
+			"MIC BIAS Internal1", "Secondary Mic",
+			"AMIC1", "MIC BIAS Internal1",
+			"AMIC2", "MIC BIAS Internal2",
+			"AMIC3", "MIC BIAS Internal1";
+		pinctrl-names = "cdc_lines_act",
+				"cdc_lines_sus";
+		pinctrl-0 = <&cdc_pdm_lines_act>;
+		pinctrl-1 = <&cdc_pdm_lines_sus>;
+		asoc-platform = <&pcm0>, <&pcm1>, <&voip>, <&voice>,
+				<&loopback>, <&compress>, <&hostless>,
+				<&afe>, <&lsm>, <&routing>, <&lpa>;
+		asoc-platform-names = "msm-pcm-dsp.0", "msm-pcm-dsp.1",
+				"msm-voip-dsp", "msm-pcm-voice", "msm-pcm-loopback",
+				"msm-compress-dsp", "msm-pcm-hostless", "msm-pcm-afe",
+				"msm-lsm-client", "msm-pcm-routing", "msm-pcm-lpa";
+		asoc-cpu = <&dai_pri_auxpcm>, <&dai_hdmi>,
+				<&dai_mi2s0>, <&dai_mi2s1>, <&dai_mi2s2>, <&dai_mi2s3>,
+				<&sb_0_rx>, <&sb_0_tx>, <&sb_1_rx>, <&sb_1_tx>,
+				<&sb_3_rx>, <&sb_3_tx>, <&sb_4_rx>, <&sb_4_tx>,
+				<&bt_sco_rx>, <&bt_sco_tx>, <&int_fm_rx>, <&int_fm_tx>,
+				<&afe_pcm_rx>, <&afe_pcm_tx>, <&afe_proxy_rx>, <&afe_proxy_tx>,
+				<&incall_record_rx>, <&incall_record_tx>, <&incall_music_rx>,
+				<&incall_music_2_rx>;
+		asoc-cpu-names = "msm-dai-q6-auxpcm.1", "msm-dai-q6-hdmi.8",
+				"msm-dai-q6-mi2s.0", "msm-dai-q6-mi2s.1",
+				"msm-dai-q6-mi2s.2", "msm-dai-q6-mi2s.3",
+				"msm-dai-q6-dev.16384", "msm-dai-q6-dev.16385",
+				"msm-dai-q6-dev.16386", "msm-dai-q6-dev.16387",
+				"msm-dai-q6-dev.16390", "msm-dai-q6-dev.16391",
+				"msm-dai-q6-dev.16392", "msm-dai-q6-dev.16393",
+				"msm-dai-q6-dev.12288", "msm-dai-q6-dev.12289",
+				"msm-dai-q6-dev.12292", "msm-dai-q6-dev.12293",
+				"msm-dai-q6-dev.224", "msm-dai-q6-dev.225",
+				"msm-dai-q6-dev.241", "msm-dai-q6-dev.240",
+				"msm-dai-q6-dev.32771", "msm-dai-q6-dev.32772",
+				"msm-dai-q6-dev.32773", "msm-dai-q6-dev.32770";
+		asoc-codec = <&stub_codec>, <&pm8916_tombak_dig>;
+		asoc-codec-names = "msm-stub-codec.1", "tombak_codec";
+	};
+};
+
+&pm8916_mpps {
+	mpp@a300 { /* MPP 4 */
+		/* Backlight PWM */
+		qcom,mode = <1>;		/* Digital output */
+		qcom,invert = <0>;		/* Disable invert */
+		qcom,src-sel = <4>;		/* DTEST1 */
+		qcom,vin-sel = <0>;		/* VPH_PWR */
+		qcom,master-en = <1>;		/* Enable MPP */
+	};
+};
+
+&mdss_mdp {
+	qcom,mdss-pref-prim-intf = "dsi";
+};
+
+&pmx_mdss {
+	qcom,num-grp-pins = <1>;
+	qcom,pins = <&gp 113>;//no use
+};
+
+&mdss_dsi0 {
+	qcom,dsi-pref-prim-pan = <&dsi_mipi_rgb_1280p_video>;
+	pinctrl-names = "mdss_default", "mdss_sleep";
+	pinctrl-0 = <&mdss_dsi_active>;
+	pinctrl-1 = <&mdss_dsi_suspend>;
+
+	qcom,platform-reset-gpio = <&msm_gpio 113 0>;//no use 
+};
+
+&dsi_mipi_rgb_1280p_video {
+			qcom,mdss-dsi-bl-pmic-control-type = "bl_ctrl_pwm";
+			qcom,mdss-dsi-bl-pmic-pwm-frequency = <100>;
+			qcom,mdss-dsi-bl-pmic-bank-select = <0>;
+			qcom,mdss-dsi-pwm-gpio = <&pm8916_mpps 4 0>;
+			//qcom,cont-splash-enabled;
+};
+
+/*add by fangchengbing used for 753 project*/
+&dsi_hx8394_600x1024_video {
+    qcom,mdss-dsi-bl-pmic-control-type = "bl_ctrl_wled";
+    qcom,cont-splash-enabled;
+};
+
+&dsi_otm8019a_fwvga_video {
+       qcom,cont-splash-enabled;
+};
+
+/*add by fangchengbing for 753*/
+&dsi_otm9605_qhd_video {
+    qcom,mdss-dsi-bl-pmic-control-type = "bl_ctrl_wled";
+    qcom,cont-splash-enabled;
+};
+
+&dsi_hx8389b_qhd_vid {
+    qcom,mdss-dsi-bl-pmic-control-type = "bl_ctrl_wled";
+    qcom,cont-splash-enabled;
+};
+
+&dsi_hx8394f_720p_video {
+    qcom,mdss-dsi-bl-pmic-control-type = "bl_ctrl_wled";
+    qcom,cont-splash-enabled;
+};
+
+
+/*mickey.shi, 10/17/2016*/
+&dsi_hx8394f_zzw500hah_720p_video {
+	qcom,mdss-dsi-bl-pmic-control-type = "bl_ctrl_pwm";
+	qcom,mdss-dsi-bl-pmic-pwm-frequency = <1000>;
+	qcom,mdss-dsi-bl-pmic-bank-select = <0>;
+	qcom,mdss-dsi-pwm-gpio = <&pm8916_mpps 4 0>;
+	qcom,cont-splash-enabled;
+};
+
+/*add by eliot shao 2016.12.14 for icn6211*/
+&i2c_5 {// BLSP1 QUP5
+
+};
+
+&sdc2_cd_on {
+	/delete-property/ bias-pull-up;
+	bias-pull-down;
+};
+
+&sdc2_cd_off {
+	/delete-property/ bias-disable;
+	bias-pull-down;
+};
+
+&sdhc_2 {
+	interrupts = <0 1>;
+	interrupt-map = <0 &intc 0 125 0
+		1 &intc 0 221 0>;
+	interrupt-names = "hc_irq", "pwr_irq";
+	/delete-property/ cd-gpios;
+};
+
+/*add by fangchengbing enable /dev/ttyHSL1 gpio 0 1 2 3*/
+/ {
+	aliases {
+		serial1 = &blsp1_uart1;   /*add by fangchengbing support /dev/tttHSL1*/
+	};
+};
+
+&blsp1_uart1 {
+	compatible = "qcom,msm-lsuart-v14";  /*modified by fangchengbing low speed can meet the requirement*/
+   	reg = <0x78af000 0x200>;  /*7884000 is used in high speed*/
+        interrupts = <0 107 0>;
+	status = "ok";
+};
+
+&pm8916_pon {
+	qcom,pon_2 {
+		qcom,support-reset = <1>;
+		qcom,s1-timer = <3072>;
+		qcom,s2-timer = <500>;
+		qcom,s2-type = <7>;
+		linux,code = <0x198>; 
+	};
+};
+
