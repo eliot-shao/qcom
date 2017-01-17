@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <string name="hello">Hello World, MySocketActivity!</string>
+    <string name="app_name">MySocket</string>
+    <string name="name">姓名</string>
+    <string name="sex">性别</string>
+    <string name="nameStr">Name</string>
+    <string name="sexStr">Sex</string>
+    <string name="colon">:</string>
+    <string name="send">发送</string>
+    <string name="nameNull">姓名不能为空</string>
+    <string name="result">Result</string>
+    <string name="empty">--</string>
+
+</resources>
