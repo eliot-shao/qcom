@@ -1,0 +1,10 @@
+sn65dsi84是一款mipi-2-lvds转换芯片。
+
+调试技巧：
+1、背光强拉后进行调试；
+2、先调试kernel阶段；
+3、使用adb i2c_test指令进行对sn65dsi84芯片进行i2c配置
+4、ap dsi端配置按照正常的屏配置，主要涉及分辨率和波特率等。
+5、这个调试过程难点：i2c通路，电源和使能引脚都打开，dsi有信号输出。测量LVDS的信号是否有输出。
+
+gpio_i2c_new.h.zip中使用了模拟i2c在LK阶段。smbus-protocol为i2c度写寄存器子协议。
