@@ -1,0 +1,13 @@
+i2c_test是一个测试i2c slave的bin文件
+
+可以通过adb 打入到system/bin下面，然后使用：
+
+./i2c_test /dev/i2c-0 0x1e 0 0x0f
+cmd [path] [device addr] [R/W:0/1] [reg] <value>
+
+./i2c_test /dev/i2c-0 0x1e 1 0x0f 127
+注意：使用i2c写寄存器时候最后写入的值只能是十进制数值
+adb remount
+adb root
+adb push i2c_test /system/bin/i2c_test
+

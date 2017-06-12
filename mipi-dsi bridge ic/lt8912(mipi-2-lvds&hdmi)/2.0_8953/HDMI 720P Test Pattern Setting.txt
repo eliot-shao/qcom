@@ -1,0 +1,62 @@
+
+//-------------------LT8912B Initital---------------------//
+
+//	DigitalClockEn(void)
+	I2CADR = 0x90;
+	HDMI_WriteI2C_Byte(0x08,0xff);
+	HDMI_WriteI2C_Byte(0x09,0xff);
+	HDMI_WriteI2C_Byte(0x0a,0xff);
+	HDMI_WriteI2C_Byte(0x0b,0xff);
+	HDMI_WriteI2C_Byte(0x0c,0xff);
+
+//	TxAnalog(void)
+	I2CADR = 0x90;
+	HDMI_WriteI2C_Byte(0x31,0xa1);
+	HDMI_WriteI2C_Byte(0x32,0xa1);
+	HDMI_WriteI2C_Byte(0x33,0x03);
+	HDMI_WriteI2C_Byte(0x37,0x00);
+	HDMI_WriteI2C_Byte(0x38,0x22);
+	HDMI_WriteI2C_Byte(0x60,0x82);
+
+//	CbusAnalog(void)
+	I2CADR = 0x90;
+	HDMI_WriteI2C_Byte(0x39,0x45);
+	HDMI_WriteI2C_Byte(0x3b,0x00);
+
+
+//	HDMIPllAnalog(void)
+	I2CADR = 0x90;
+	HDMI_WriteI2C_Byte(0x44,0x31);
+	HDMI_WriteI2C_Byte(0x55,0x44);
+	HDMI_WriteI2C_Byte(0x57,0x01);
+	HDMI_WriteI2C_Byte(0x5a,0x02);
+
+
+//--------------720P test pattern------------------------//
+
+	// Test pattern 1280x720 60Hz
+	I2CADR = 0x92;
+	HDMI_WriteI2C_Byte(0x72,0x12);
+	HDMI_WriteI2C_Byte(0x73,0x04);//RGD_PTN_DE_DLY[7:0]
+	HDMI_WriteI2C_Byte(0x74,0x01);//RGD_PTN_DE_DLY[11:8]  192
+	HDMI_WriteI2C_Byte(0x75,0x19);//RGD_PTN_DE_TOP[6:0]  41
+	HDMI_WriteI2C_Byte(0x76,0x00);//RGD_PTN_DE_CNT[7:0]
+	HDMI_WriteI2C_Byte(0x77,0xd0);//RGD_PTN_DE_LIN[7:0]
+	HDMI_WriteI2C_Byte(0x78,0x25);//RGD_PTN_DE_LIN[10:8],RGD_PTN_DE_CNT[11:8]
+	HDMI_WriteI2C_Byte(0x79,0x72);//RGD_PTN_H_TOTAL[7:0]
+	HDMI_WriteI2C_Byte(0x7a,0xee);//RGD_PTN_V_TOTAL[7:0]
+	HDMI_WriteI2C_Byte(0x7b,0x26);//RGD_PTN_V_TOTAL[10:8],RGD_PTN_H_TOTAL[11:8]
+	HDMI_WriteI2C_Byte(0x7c,0x28);//RGD_PTN_HWIDTH[7:0]
+	HDMI_WriteI2C_Byte(0x7d,0x05);//RGD_PTN_HWIDTH[9:8],RGD_PTN_VWIDTH[5:0]
+
+	
+	HDMI_WriteI2C_Byte(0x70,0x80);
+	HDMI_WriteI2C_Byte(0x71,0x76);
+
+	// 74.25M CLK
+	HDMI_WriteI2C_Byte(0x4e,0x99);
+	HDMI_WriteI2C_Byte(0x4f,0x99);
+	HDMI_WriteI2C_Byte(0x50,0x69);
+	HDMI_WriteI2C_Byte(0x51,0x80);
+
+//-------------------------------------------------------//

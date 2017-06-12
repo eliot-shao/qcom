@@ -1,0 +1,412 @@
+
+/*********************************************
+
+I2C_Adr = 0x90 / 0x92 / 0x94;// bit0 是读写标志位；如果是Linux系统，IIC address 的 bit7作为读写标志位，则I2C_Adr 应该是 0x48 / 0x49 / 0x4a；
+
+LT8912 IIC Address        Linux IIC address
+0x90		==》		0x48
+0x92		==》		0x49
+0x94		==》		0x4a
+
+//@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@//
+
+LT8912B 的IIC BUS 速率不要超过100KHz。
+
+//@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@//
+
+5、LT8912B 对MIPI输入信号的要求：
+	a) MIPI DSI
+	b) Video mode
+	c) non-burst mode（continue mode）--（MIPI 的CLK是要连续的）
+	d) sync event
+
+//@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@//
+
+// Reset LT8912 
+//	RESET_Lt8912chip(); // 拉低LT8912 的reset pin，delay 150 ms左右，再拉高
+
+// extern void HDMI_WriteI2C_Byte(u8 RegAddr, u8 data) // IIC 速率不要超过100KHz。
+
+*********************************************/
+
+//#define _LVDS_Output_	// LVDS输出，不需要LVDS输出就屏蔽这个宏定义。
+
+
+enum
+{
+H_act = 0,
+V_act,
+H_tol,
+V_tol,
+H_bp,
+H_sync,
+V_sync,
+V_bp
+};
+
+//------------------------------------------//
+
+#ifdef _LVDS_Output_
+
+
+// 设置LVDS屏的CLK：
+	#define Panel_Pixel_CLK	6500	// 65MHz * 100
+
+// 设置LVDS屏色深
+	#define _8bit_ // 24 bit
+//	#define _6bit_ // 18 bit
+
+// 根据屏的规格书设置 LVDS 屏的Timing:
+	static int LVDS_Panel_Timing[] = 
+//	H_act	V_act	H_total	V_total	H_BP	H_sync	V_sync	V_BP
+//	{1024,	600,	1344,	635,	140,	20, 	3,	20};// 1024x600 Timing
+	{1024,	768,	1344,	806,	160,	136, 	6,	29};// 1024x768 Timing
+
+	union Temp
+	{
+	u8 Temp8[4];
+	u16 Temp16[2];
+	u32 Temp32;
+	};
+
+#endif
+
+//------------------------------------------//
+
+// 设置输入的MIPI信号的Lane数
+#define MIPI_Lane	4	// 4 Lane MIPI input
+
+// 根据前端MIPI输入信号的Timing修改以下数组的值:
+
+	static int MIPI_Timing[] = 
+//	H_act	V_act	H_total	V_total	H_BP	H_sync	V_sync	V_BP
+//	{1920,	1080,	2200,	1125,	148,	44, 	5,	36};// 1080P  Vesa Timing
+//	{1366,	768,	1500,	800,	64,	56,	3,	28};// 1366x768 VESA Timing
+	{1024,	768,	1344,	806,	160,	136, 	6,	29};// 1024x768 Timing
+
+*********************************************/
+
+// LT8912B寄存器初始化：
+// 先给MIPI 信号，再初始化LT8912B
+
+void LT8912B_Initial(void)
+{
+
+#ifdef _LVDS_Output_
+
+	union Temp	Core_PLL_Ratio ;
+	
+	float f_DIV;
+
+#endif
+
+//------------------------------------------//
+//	先Reset LT8912B
+	RESET_Lt8912chip(); // 拉低LT8912 的reset pin，delay 150 ms左右，再拉高
+
+//------------------------------------------//
+	
+//	DigitalClockEn();
+	I2CADR = 0x90; // IIC address
+
+#ifdef _LVDS_Output_
+	HDMI_WriteI2C_Byte(0x08,0xff);// Register address : 0x08; 	Value : 0xff
+	HDMI_WriteI2C_Byte(0x09,0xff);
+	HDMI_WriteI2C_Byte(0x0a,0xff);
+	HDMI_WriteI2C_Byte(0x0b,0x7c);// 
+	HDMI_WriteI2C_Byte(0x0c,0xff);
+#else
+	HDMI_WriteI2C_Byte(0x08,0xff);// Register address : 0x08; 	Value : 0xff
+	HDMI_WriteI2C_Byte(0x09,0x81);
+	HDMI_WriteI2C_Byte(0x0a,0xff);
+	HDMI_WriteI2C_Byte(0x0b,0x64);//
+	HDMI_WriteI2C_Byte(0x0c,0xff);
+
+	HDMI_WriteI2C_Byte(0x44,0x31);// Close LVDS ouput
+	HDMI_WriteI2C_Byte(0x51,0x1f);
+#endif
+//------------------------------------------//
+
+//	TxAnalog();
+	I2CADR = 0x90;
+	HDMI_WriteI2C_Byte(0x31,0xa1);
+	HDMI_WriteI2C_Byte(0x32,0xa1);
+	HDMI_WriteI2C_Byte(0x33,0x03);// 0x03 Open HDMI Tx； 0x00 Close HDMI Tx
+	HDMI_WriteI2C_Byte(0x37,0x00);
+	HDMI_WriteI2C_Byte(0x38,0x22);
+	HDMI_WriteI2C_Byte(0x60,0x82);
+
+//------------------------------------------//
+
+//	CbusAnalog();
+	I2CADR = 0x90;
+	HDMI_WriteI2C_Byte(0x39,0x45);
+	HDMI_WriteI2C_Byte(0x3b,0x00);
+
+//------------------------------------------//
+
+//	HDMIPllAnalog();
+	I2CADR = 0x90;
+	HDMI_WriteI2C_Byte(0x44,0x31);
+	HDMI_WriteI2C_Byte(0x55,0x44);
+	HDMI_WriteI2C_Byte(0x57,0x01);
+	HDMI_WriteI2C_Byte(0x5a,0x02);
+
+//------------------------------------------//
+
+//	MipiBasicSet();
+	I2CADR = 0x92;
+	HDMI_WriteI2C_Byte(0x10,0x01); // 0x05 
+	HDMI_WriteI2C_Byte(0x11,0x08); // 0x12 
+	HDMI_WriteI2C_Byte(0x12,0x04);  
+	HDMI_WriteI2C_Byte(0x13,MIPI_Lane%0x04);  // 00 4 lane  // 01 lane // 02 2 lane //03 3 lane
+	HDMI_WriteI2C_Byte(0x14,0x00);  
+	HDMI_WriteI2C_Byte(0x15,0x00);
+	HDMI_WriteI2C_Byte(0x1a,0x03);  
+	HDMI_WriteI2C_Byte(0x1b,0x03);  
+
+//------------------------------------------//
+
+#ifdef _LVDS_Output_
+//	void LvdsPowerDown(void)
+	I2CADR = 0x90;
+	HDMI_WriteI2C_Byte(0x44,0x31);
+#endif
+//------------------------------------------//
+
+//	设置 MIPI Timing
+//	MIPIDig();
+	I2CADR = 0x92;
+	HDMI_WriteI2C_Byte(0x18,(u8)(MIPI_Timing[H_sync]%256)); // hwidth
+	HDMI_WriteI2C_Byte(0x19,(u8)(MIPI_Timing[V_sync]%256)); // vwidth
+	HDMI_WriteI2C_Byte(0x1c,(u8)(MIPI_Timing[H_act]%256)); // H_active[7:0]
+	HDMI_WriteI2C_Byte(0x1d,(u8)(MIPI_Timing[H_act]/256)); // H_active[15:8]
+
+	HDMI_WriteI2C_Byte(0x1e,0x67); // hs/vs/de pol hdmi sel pll sel
+	HDMI_WriteI2C_Byte(0x2f,0x0c); // fifo_buff_length 12
+
+	HDMI_WriteI2C_Byte(0x34,(u8)(MIPI_Timing[H_tol]%256)); // H_total[7:0]
+	HDMI_WriteI2C_Byte(0x35,(u8)(MIPI_Timing[H_tol]/256)); // H_total[15:8]
+	HDMI_WriteI2C_Byte(0x36,(u8)(MIPI_Timing[V_tol]%256)); // V_total[7:0]
+	HDMI_WriteI2C_Byte(0x37,(u8)(MIPI_Timing[V_tol]/256)); // V_total[15:8]
+	HDMI_WriteI2C_Byte(0x38,(u8)(MIPI_Timing[V_bp]%256)); // VBP[7:0]
+	HDMI_WriteI2C_Byte(0x39,(u8)(MIPI_Timing[V_bp]/256)); // VBP[15:8]
+	HDMI_WriteI2C_Byte(0x3a,(u8)((MIPI_Timing[V_tol]-MIPI_Timing[V_act]-MIPI_Timing[V_bp]-MIPI_Timing[V_sync])%256)); // VFP[7:0]
+	HDMI_WriteI2C_Byte(0x3b,(u8)((MIPI_Timing[V_tol]-MIPI_Timing[V_act]-MIPI_Timing[V_bp]-MIPI_Timing[V_sync])/256)); // VFP[15:8]
+	HDMI_WriteI2C_Byte(0x3c,(u8)(MIPI_Timing[H_bp]%256)); // HBP[7:0]
+	HDMI_WriteI2C_Byte(0x3d,(u8)(MIPI_Timing[H_bp]/256)); // HBP[15:8]
+	HDMI_WriteI2C_Byte(0x3e,(u8)((MIPI_Timing[H_tol]-MIPI_Timing[H_act]-MIPI_Timing[H_bp]-MIPI_Timing[H_sync])%256)); // HFP[7:0]
+	HDMI_WriteI2C_Byte(0x3f,(u8)((MIPI_Timing[H_tol]-MIPI_Timing[H_act]-MIPI_Timing[H_bp]-MIPI_Timing[H_sync])/256)); // HFP[15:8]
+
+//------------------------------------------//
+
+//	DDSConfig();
+	I2CADR = 0x92;
+	HDMI_WriteI2C_Byte(0x4e,0x6A);
+	HDMI_WriteI2C_Byte(0x4f,0x4D);
+	HDMI_WriteI2C_Byte(0x50,0xF3);
+	HDMI_WriteI2C_Byte(0x51,0x80);
+	HDMI_WriteI2C_Byte(0x1f,0x90);
+	HDMI_WriteI2C_Byte(0x20,0x01);
+	HDMI_WriteI2C_Byte(0x21,0x68);
+	HDMI_WriteI2C_Byte(0x22,0x01);
+	HDMI_WriteI2C_Byte(0x23,0x5E);
+	HDMI_WriteI2C_Byte(0x24,0x01);
+	HDMI_WriteI2C_Byte(0x25,0x54);
+	HDMI_WriteI2C_Byte(0x26,0x01);
+	HDMI_WriteI2C_Byte(0x27,0x90);
+	HDMI_WriteI2C_Byte(0x28,0x01);
+	HDMI_WriteI2C_Byte(0x29,0x68);
+	HDMI_WriteI2C_Byte(0x2a,0x01);
+	HDMI_WriteI2C_Byte(0x2b,0x5E);
+	HDMI_WriteI2C_Byte(0x2c,0x01);
+	HDMI_WriteI2C_Byte(0x2d,0x54);
+	HDMI_WriteI2C_Byte(0x2e,0x01);
+	HDMI_WriteI2C_Byte(0x42,0x64);
+	HDMI_WriteI2C_Byte(0x43,0x00);
+	HDMI_WriteI2C_Byte(0x44,0x04);
+	HDMI_WriteI2C_Byte(0x45,0x00);
+	HDMI_WriteI2C_Byte(0x46,0x59);
+	HDMI_WriteI2C_Byte(0x47,0x00);
+	HDMI_WriteI2C_Byte(0x48,0xf2);
+	HDMI_WriteI2C_Byte(0x49,0x06);
+	HDMI_WriteI2C_Byte(0x4a,0x00);
+	HDMI_WriteI2C_Byte(0x4b,0x72);
+	HDMI_WriteI2C_Byte(0x4c,0x45);
+	HDMI_WriteI2C_Byte(0x4d,0x00);
+	HDMI_WriteI2C_Byte(0x52,0x08);
+	HDMI_WriteI2C_Byte(0x53,0x00);
+	HDMI_WriteI2C_Byte(0x54,0xb2);
+	HDMI_WriteI2C_Byte(0x55,0x00);
+	HDMI_WriteI2C_Byte(0x56,0xe4);
+	HDMI_WriteI2C_Byte(0x57,0x0d);
+	HDMI_WriteI2C_Byte(0x58,0x00);
+	HDMI_WriteI2C_Byte(0x59,0xe4);
+	HDMI_WriteI2C_Byte(0x5a,0x8a);
+	HDMI_WriteI2C_Byte(0x5b,0x00);
+	HDMI_WriteI2C_Byte(0x5c,0x34);
+	HDMI_WriteI2C_Byte(0x1e,0x4f);
+	HDMI_WriteI2C_Byte(0x51,0x00);
+
+//------------------------------------------//
+
+//	AudioIIsEn(); // IIS Input
+	I2CADR = 0x90;
+	HDMI_WriteI2C_Byte(0xB2,0x01);
+	I2CADR = 0x94;
+	HDMI_WriteI2C_Byte(0x06,0x08);
+	HDMI_WriteI2C_Byte(0x07,0xF0);
+	HDMI_WriteI2C_Byte(0x34,0xD2);
+
+//	AudioSPDIFEn(); // SPDIF Input
+//	I2CADR = 0x90; 
+//	HDMI_WriteI2C_Byte(0xB2,0x01);
+//	I2CADR = 0x94;
+//	HDMI_WriteI2C_Byte(0x06,0x0e);
+//	HDMI_WriteI2C_Byte(0x07,0x00);
+//	HDMI_WriteI2C_Byte(0x34,0xD2);
+
+//------------------------------------------//
+
+//	MIPIRxLogicRes();
+	I2CADR = 0x90;
+	HDMI_WriteI2C_Byte(0x03,0x7f);
+	Delay_ms(100);
+	HDMI_WriteI2C_Byte(0x03,0xff);
+
+//------------------------------------------//
+
+#ifdef _LVDS_Output_
+
+//	Coll PLL寄存器设置
+//	void Collpll51M(void)// PLL 51.25MHz
+
+	Core_PLL_Ratio.Temp32 = (Panel_Pixel_CLK/25)*7;
+
+	I2CADR = 0x90;
+	HDMI_WriteI2C_Byte(0x50,0x24);
+	HDMI_WriteI2C_Byte(0x51,0x05);
+	HDMI_WriteI2C_Byte(0x52,0x14);
+
+	HDMI_WriteI2C_Byte(0x69,(u8)((Core_PLL_Ratio.Temp32/100)&0x000000FF));
+	HDMI_WriteI2C_Byte(0x69,0x80+(u8)((Core_PLL_Ratio.Temp32/100)&0x000000FF));
+
+	Core_PLL_Ratio.Temp32 = (Core_PLL_Ratio.Temp32 % 100)&0x000000FF;
+	Core_PLL_Ratio.Temp32 = Core_PLL_Ratio.Temp32*16384;
+	Core_PLL_Ratio.Temp32 = Core_PLL_Ratio.Temp32/100;
+//***********************************************************//
+	// 注意大小端，此处为大端模式（Big-endian） 
+	HDMI_WriteI2C_Byte(0x6c,0x80 + Core_PLL_Ratio.Temp8[2]);
+	HDMI_WriteI2C_Byte(0x6b,Core_PLL_Ratio.Temp8[3]);
+
+	// 注意大小端，此处为小端模式（Little-endian） 
+//	HDMI_WriteI2C_Byte(0x6c,0x80 + Core_PLL_Ratio.Temp8[1]);
+//	HDMI_WriteI2C_Byte(0x6b,Core_PLL_Ratio.Temp8[0]);
+//***********************************************************//
+//------------------------------------------//
+
+//	LVDS Output寄存器设置
+//	void LVDS_Scale_Ratio(void)
+
+	I2CADR = 0x90;
+	HDMI_WriteI2C_Byte(0x80,0x00);
+	HDMI_WriteI2C_Byte(0x81,0xff);
+	HDMI_WriteI2C_Byte(0x82,0x03);
+
+	HDMI_WriteI2C_Byte(0x83,(u8)(MIPI_Timing[H_act]%256));
+	HDMI_WriteI2C_Byte(0x84,(u8)(MIPI_Timing[H_act]/256));
+
+	HDMI_WriteI2C_Byte(0x85,0x80);
+	HDMI_WriteI2C_Byte(0x86,0x10);
+
+	HDMI_WriteI2C_Byte(0x87,(u8)(LVDS_Panel_Timing[H_tol]%256));
+	HDMI_WriteI2C_Byte(0x88,(u8)(LVDS_Panel_Timing[H_tol]/256));
+	HDMI_WriteI2C_Byte(0x89,(u8)(LVDS_Panel_Timing[H_sync]%256));
+	HDMI_WriteI2C_Byte(0x8a,(u8)(LVDS_Panel_Timing[H_bp]%256));
+	HDMI_WriteI2C_Byte(0x8b,(u8)((LVDS_Panel_Timing[H_bp]/256)*0x80 + (LVDS_Panel_Timing[V_sync]%256)));
+	HDMI_WriteI2C_Byte(0x8c,(u8)(LVDS_Panel_Timing[H_act]%256));
+	HDMI_WriteI2C_Byte(0x8d,(u8)(LVDS_Panel_Timing[V_act]%256));
+	HDMI_WriteI2C_Byte(0x8e,(u8)((LVDS_Panel_Timing[V_act]/256)*0x10 + (LVDS_Panel_Timing[H_act]/256)));
+
+	f_DIV = (((float)(MIPI_Timing[H_act]-1))/(float)(LVDS_Panel_Timing[H_act]-1))*4096;
+	Core_PLL_Ratio.Temp32 = (u32)f_DIV;
+//***********************************************************//
+	// 注意大小端，此处为大端模式（Big-endian） 
+	HDMI_WriteI2C_Byte(0x8f,Core_PLL_Ratio.Temp8[3]);
+	HDMI_WriteI2C_Byte(0x90,Core_PLL_Ratio.Temp8[2]);
+
+	// 注意大小端，此处为小端模式（Little-endian）
+//	HDMI_WriteI2C_Byte(0x8f,Core_PLL_Ratio.Temp8[0]);
+//	HDMI_WriteI2C_Byte(0x90,Core_PLL_Ratio.Temp8[1]);
+//***********************************************************//
+
+	f_DIV = (((float)(MIPI_Timing[V_act]-1))/(float)(LVDS_Panel_Timing[V_act]-1))*4096;
+	Core_PLL_Ratio.Temp32 = (u32)f_DIV;
+//***********************************************************//
+	// 注意大小端，此处为大端模式（Big-endian） 
+	HDMI_WriteI2C_Byte(0x91,Core_PLL_Ratio.Temp8[3]);
+	HDMI_WriteI2C_Byte(0x92,Core_PLL_Ratio.Temp8[2]);
+
+	// 注意大小端，此处为小端模式（Little-endian） 
+//	HDMI_WriteI2C_Byte(0x91,Core_PLL_Ratio.Temp8[1]);
+//	HDMI_WriteI2C_Byte(0x92,Core_PLL_Ratio.Temp8[0]);
+//***********************************************************//
+	HDMI_WriteI2C_Byte(0x7f,0x9c);
+
+#ifdef _8bit_
+	HDMI_WriteI2C_Byte(0xa8,0x1b);// 单8 LVDS
+#else
+	HDMI_WriteI2C_Byte(0xa8,0x1f);// 单6 LVDS
+#endif
+
+	Delay_ms(3000);
+
+//	void LvdsPowerUp(void)
+	I2CADR = 0x90;
+	HDMI_WriteI2C_Byte(0x44,0x30);
+#endif
+
+}
+
+//******************************************//
+
+待机的时候，刷以下寄存器,LT8912Bd 电流能降到3mA左右；待机重启的时候需要重新刷上面的初始化参数。
+void LT8912B_Standby(void)
+{
+	I2CADR = 0x90;
+	HDMI_WriteI2C_Byte(0x08,0x00);
+	HDMI_WriteI2C_Byte(0x09,0x81);
+	HDMI_WriteI2C_Byte(0x0a,0x00);
+	HDMI_WriteI2C_Byte(0x0b,0x20);
+	HDMI_WriteI2C_Byte(0x0c,0x00);
+
+	HDMI_WriteI2C_Byte(0x54,0x1d);
+	HDMI_WriteI2C_Byte(0x51,0x15);
+
+	HDMI_WriteI2C_Byte(0x44,0x31);
+	HDMI_WriteI2C_Byte(0x41,0xbd);
+	HDMI_WriteI2C_Byte(0x5c,0x11);
+
+	HDMI_WriteI2C_Byte(0x30,0x08);
+	HDMI_WriteI2C_Byte(0x31,0x00);
+	HDMI_WriteI2C_Byte(0x32,0x00);
+	HDMI_WriteI2C_Byte(0x33,0x00);
+	HDMI_WriteI2C_Byte(0x34,0x00);
+	HDMI_WriteI2C_Byte(0x35,0x00);
+	HDMI_WriteI2C_Byte(0x36,0x00);
+	HDMI_WriteI2C_Byte(0x37,0x00);
+	HDMI_WriteI2C_Byte(0x38,0x00);
+}
+//******************************************//
+
+
+
+
+
+
+
+
+
+
+
+
