@@ -1,0 +1,98 @@
+commit 1a67fe420623e2b676b75f3ddc0b3a384a4931ab
+Author: Wang Xudong <wxudong@qti.qualcomm.com>
+Date:   Mon May 15 14:37:54 2017 +0800
+
+    spi init
+    
+    Change-Id: I135dbfbb662ce1068d537d460f90728ae03067db
+
+diff --git a/dev/gcdb/display/gcdb_display.c b/dev/gcdb/display/gcdb_display.c
+old mode 100755
+new mode 100644
+index 16a5d3e..01c62f0
+--- a/dev/gcdb/display/gcdb_display.c
++++ b/dev/gcdb/display/gcdb_display.c
+@@ -1,4 +1,4 @@
+-/* Copyright (c) 2013-2014, The Linux Foundation. All rights reserved.
++/* Copyright (c) 2013-2014,2017, The Linux Foundation. All rights reserved.
+  *
+  * Redistribution and use in source and binary forms, with or without
+  * modification, are permitted provided that the following conditions
+@@ -216,6 +216,8 @@ bool gcdb_display_cmdline_arg(char *panel_name, char *pbuf, uint16_t buf_size)
+ 		} else {
+ 			if (target_is_edp())
+ 				default_str = "0:edp:";
++			else if (target_is_spi())
++				default_str = "0:spi:0";
+ 			else
+ 				default_str = "0:dsi:0:";
+ 
+diff --git a/target/init.c b/target/init.c
+index e513336..c532027 100644
+--- a/target/init.c
++++ b/target/init.c
+@@ -1,7 +1,7 @@
+ /*
+  * Copyright (c) 2008 Travis Geiselbrecht
+  *
+- * Copyright (c) 2015, The Linux Foundation. All rights reserved.
++ * Copyright (c) 2015,2017, The Linux Foundation. All rights reserved.
+  *
+  * Permission is hereby granted, free of charge, to any person obtaining
+  * a copy of this software and associated documentation files
+@@ -196,6 +196,11 @@ __WEAK uint8_t target_is_edp()
+ 	return 0;
+ }
+ 
++__WEAK uint8_t target_is_spi()
++{
++	return 0;
++}
++
+ /* default usb controller to be used. */
+ __WEAK const char * target_usb_controller()
+ {
+diff --git a/target/msm8909/init.c b/target/msm8909/init.c
+index 1220c38..53b5a5d 100644
+--- a/target/msm8909/init.c
++++ b/target/msm8909/init.c
+@@ -498,6 +498,30 @@ uint8_t target_panel_auto_detect_enabled()
+ 	return ret;
+ }
+ 
++uint8_t target_is_spi()
++{
++	uint32_t platform = board_platform_id();
++	uint32_t hw_id = board_hardware_id();
++	uint8_t is_spi_panel = 0;
++
++	switch(platform) {
++	case MSM8909:
++		switch (hw_id) {
++		case HW_PLATFORM_QRD:
++			is_spi_panel = 1;
++			break;
++		default:
++			is_spi_panel = 1;
++			break;
++		}
++		break;
++	default:
++		is_spi_panel = 1;
++		break;
++	}
++	return is_spi_panel;
++}
++
+ static uint8_t splash_override;
+ /* Returns 1 if target supports continuous splash screen. */
+ int target_cont_splash_screen()
+@@ -509,7 +533,7 @@ int target_cont_splash_screen()
+ 		case HW_PLATFORM_MTP:
+ 		case HW_PLATFORM_QRD:
+ 		case HW_PLATFORM_RCM:
+-			splash_screen = 1;
++			splash_screen = 0;
+ 			break;
+ 		default:
+ 			splash_screen = 0;

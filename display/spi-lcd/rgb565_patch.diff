@@ -1,0 +1,159 @@
+diff --git a/kernel/arch/arm/boot/dts/qcom/spi-panel-ili9342c-cmd.dtsi b/kernel/arch/arm/boot/dts/qcom/spi-panel-ili9342c-cmd.dtsi
+index 8ddddc4..d8ad891 100755
+--- a/kernel/arch/arm/boot/dts/qcom/spi-panel-ili9342c-cmd.dtsi
++++ b/kernel/arch/arm/boot/dts/qcom/spi-panel-ili9342c-cmd.dtsi
+@@ -15,7 +15,7 @@
+ 		qcom,mdss-spi-panel-name = "ili9342c command mode spi panel";
+ 		qcom,mdss-spi-panel-destination = "display_1";
+ 		qcom,mdss-spi-panel-controller = <&mdss_spi>;
+-		qcom,mdss-spi-panel-framerate = <20>;
++		qcom,mdss-spi-panel-framerate = <30>;
+ 		qcom,mdss-spi-panel-width = <320>;
+ 		qcom,mdss-spi-panel-height = <240>;
+ 		//qcom,mdss-spi-h-front-porch = <79>;
+@@ -39,7 +39,8 @@
+ 			00 03 B1 00 18
+ 			00 02 35 00 
+ 			00 02 36 C8
+-			00 02 3A 66 
++			//00 02 3A 66 
++			00 02 3A 55
+ 			00 04 f6 01 00 00 
+ 			00 05 2A 00 00 01 3F 
+ 			00 05 2B 00 00 00 EF
+diff --git a/kernel/drivers/video/msm/mdss/mdss_spi_client.c b/kernel/drivers/video/msm/mdss/mdss_spi_client.c
+index 416d9dd..455b155 100755
+--- a/kernel/drivers/video/msm/mdss/mdss_spi_client.c
++++ b/kernel/drivers/video/msm/mdss/mdss_spi_client.c
+@@ -90,7 +90,7 @@ int mdss_spi_tx_pixel(const void *buf, size_t len)
+ 		return -EINVAL;
+ 	}
+ 
+-	mdss_spi_client->bits_per_word = 24;
++	mdss_spi_client->bits_per_word = 16;
+ 
+ 	spi_message_init(&m);
+ 	spi_message_add_tail(&t, &m);
+@@ -164,7 +164,7 @@ int lcd_show_log1(char *_raw)
+ 	return 0;
+ 	
+ } 
+-void lcd_show_log(void)
++/* void lcd_show_log(void)
+ {
+ 	char *t_buf;int  index;	
+ 	t_buf = kmalloc(320*240*4,GFP_KERNEL);
+@@ -177,6 +177,18 @@ void lcd_show_log(void)
+ 	} 
+ 	mdss_spi_tx_pixel(t_buf,320*240*4);
+ 	
++} */
++void lcd_show_log(void)
++{
++	char *t_buf;int  index;	
++	t_buf = kmalloc(320*240*2,GFP_KERNEL);
++	memset(t_buf, 0x0, sizeof(t_buf));
++	for(index=0;index<320*240;index++){
++	*(t_buf+index*2+1) = (logo_raw[index*3+2]&0xf8)+(logo_raw[index*3+1] >> 5);
++	*(t_buf+index*2+0) = (logo_raw[index*3+1]&0xe0)+(logo_raw[index*3+0] >> 3);
++	} 
++	mdss_spi_tx_pixel(t_buf,320*240*2);
++	
+ }
+ #endif
+ extern struct spi_panel_data	*gl_ctrl_pdata;
+@@ -290,7 +302,7 @@ static int mdss_spi_client_probe(struct spi_device *spidev)
+ 	mdss_spi_tx_parameter(para,1);
+ 
+ 	cmd = 0x3A ;mdss_spi_tx_command(&cmd);
+-	para[0] = 0x66; 
++	para[0] = 0x55; 
+ 	mdss_spi_tx_parameter(para,1);
+ 	
+ 	cmd = 0xF6 ;mdss_spi_tx_command(&cmd);
+diff --git a/kernel/drivers/video/msm/mdss/mdss_spi_panel.c b/kernel/drivers/video/msm/mdss/mdss_spi_panel.c
+index 80a1bf1..22355e4 100755
+--- a/kernel/drivers/video/msm/mdss/mdss_spi_panel.c
++++ b/kernel/drivers/video/msm/mdss/mdss_spi_panel.c
+@@ -27,6 +27,7 @@
+ 
+ DEFINE_LED_TRIGGER(bl_led_trigger);
+ static int gRESET_NUM = 0 ;
++char *t_buf2;
+ int mdss_spi_panel_reset(struct mdss_panel_data *pdata, int enable)
+ {
+ 	struct spi_panel_data *ctrl_pdata = NULL;
+@@ -403,7 +404,8 @@ int mdss_spi_panel_kickoff(struct mdss_panel_data *pdata,
+ {
+ 	struct spi_panel_data *ctrl_pdata = NULL;
+ 	char *tx_buf;
+-	int rc = 0,i;
++	int  index;		
++	int rc = 0;
+ 	int panel_yres;
+ 	int panel_xres;
+ 	int padding_length = 0;
+@@ -414,7 +416,6 @@ int mdss_spi_panel_kickoff(struct mdss_panel_data *pdata,
+ 		pr_err("%s: Invalid input data\n", __func__);
+ 		return -EINVAL;
+ 	}
+-
+ 	ctrl_pdata = container_of(pdata, struct spi_panel_data,
+ 				panel_data);
+ 
+@@ -445,7 +446,7 @@ int mdss_spi_panel_kickoff(struct mdss_panel_data *pdata,
+ 	}*/
+ 	/*rgba8888 ----> abgr8888*/
+ 	
+-	for(i=0;i<320*240;i++)
++/* 	for(i=0;i<320*240;i++)
+ 	{
+ 		unsigned char temp1,temp2,temp3 ;
+ 		temp1 = *(tx_buf+4*i) ;
+@@ -454,12 +455,13 @@ int mdss_spi_panel_kickoff(struct mdss_panel_data *pdata,
+ 		temp3 = *(tx_buf+4*i+2) ;
+ 		*(tx_buf+4*i+2) = temp2 ;
+ 		*(tx_buf+4*i+1) = temp3 ;
+-	}
+-/* 	for(i=0;i<4;i++)
+-	{
+-		printk(KERN_ERR "0x%x ",*(tx_buf+i));
+-		
+-	}printk(KERN_ERR "....\n"); */
++	} */
++	//t_buf2 = kmalloc(320*240*2,GFP_KERNEL);
++	memset(t_buf2, 0x0, sizeof(t_buf2));
++	for(index=0;index<320*240;index++){
++	*(t_buf2+index*2+1) = (tx_buf[index*4+0]&0xf8)+(tx_buf[index*4+1] >> 5);//spi MSB
++	*(t_buf2+index*2+0) = (tx_buf[index*4+1]&0xe0)+(tx_buf[index*4+2] >> 3);
++	} 
+ 	INIT_COMPLETION(ctrl_pdata->spi_panel_te);
+ 	enable_spi_panel_te_irq(ctrl_pdata, true);
+ 	rc = wait_for_completion_timeout(&ctrl_pdata->spi_panel_te,
+@@ -480,7 +482,7 @@ int mdss_spi_panel_kickoff(struct mdss_panel_data *pdata,
+ 		gRESET_NUM=0;
+ 	}
+ 
+-	rc = mdss_spi_tx_pixel(tx_buf, ctrl_pdata->byte_pre_frame);
++	rc = mdss_spi_tx_pixel(t_buf2,320*240*2);//ctrl_pdata->byte_pre_frame
+ 
+ 	//printk(KERN_ERR "eliot ctrl_pdata->byte_pre_frame = %d",ctrl_pdata->byte_pre_frame);
+ 	return rc;
+@@ -1377,6 +1379,7 @@ struct spi_panel_data	*gl_ctrl_pdata;
+ static int mdss_spi_panel_probe(struct platform_device *pdev)
+ {
+ 	int rc = 0;
++	
+ 	struct spi_panel_data	*ctrl_pdata;
+ 	struct mdss_panel_cfg *pan_cfg = NULL;
+ 	struct device_node *spi_pan_node = NULL;
+@@ -1426,6 +1429,9 @@ static int mdss_spi_panel_probe(struct platform_device *pdev)
+ 
+ 	ctrl_pdata->mdss_util = util;
+ 
++	t_buf2 = kmalloc(320*240*2,GFP_KERNEL);
++	memset(t_buf2, 0x0, sizeof(t_buf2));
++	
+ 	gl_ctrl_pdata = ctrl_pdata ;
+ 	ctrl_name = of_get_property(pdev->dev.of_node, "label", NULL);
+ 	if (!ctrl_name)

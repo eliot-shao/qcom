@@ -1,0 +1,291 @@
+From 72700887d5176d8eee6b9331e97f9fa280c78abf Mon Sep 17 00:00:00 2001
+From: Wang Xudong <wxudong@qti.qualcomm.com>
+Date: Fri, 12 May 2017 10:45:32 +0800
+Subject: [PATCH 1/4] ARM: dts: msm: enable SPI display panel for msm8909w.
+
+Change-Id: I520ef1655869546400dd9ad7efebeb49b77f0a5e
+---
+ arch/arm/boot/dts/qcom/msm-pm8916.dtsi            | 21 --------
+ arch/arm/boot/dts/qcom/msm8909-mdss-panels.dtsi   |  1 +
+ arch/arm/boot/dts/qcom/msm8909-mdss.dtsi          | 33 ++++++++++++
+ arch/arm/boot/dts/qcom/msm8909.dtsi               |  3 +-
+ arch/arm/boot/dts/qcom/msm8909w-wtp.dts           | 58 +++++++++++++++++++--
+ arch/arm/boot/dts/qcom/spi-panel-st7789h-cmd.dtsi | 62 +++++++++++++++++++++++
+ arch/arm/configs/msm8909w_defconfig               |  1 +
+ 7 files changed, 154 insertions(+), 25 deletions(-)
+ create mode 100644 arch/arm/boot/dts/qcom/spi-panel-st7789h-cmd.dtsi
+
+diff --git a/arch/arm/boot/dts/qcom/msm-pm8916.dtsi b/arch/arm/boot/dts/qcom/msm-pm8916.dtsi
+index b71055a..046893f 100644
+--- a/arch/arm/boot/dts/qcom/msm-pm8916.dtsi
++++ b/arch/arm/boot/dts/qcom/msm-pm8916.dtsi
+@@ -60,25 +60,10 @@
+ 			#size-cells = <1>;
+ 			label = "pm8916-mpp";
+ 
+-			mpp@a000 {
+-				reg = <0xa000 0x100>;
+-				qcom,pin-num = <1>;
+-			};
+-
+ 			mpp@a100 {
+ 				reg = <0xa100 0x100>;
+ 				qcom,pin-num = <2>;
+ 			};
+-
+-			mpp@a200 {
+-				reg = <0xa200 0x100>;
+-				qcom,pin-num = <3>;
+-			};
+-
+-			mpp@a300 {
+-				reg = <0xa300 0x100>;
+-				qcom,pin-num = <4>;
+-			};
+ 		};
+ 
+ 		pm8916_gpios: gpios {
+@@ -315,12 +300,6 @@
+ 						  "fsm_state_change";
+ 			};
+ 		};
+-
+-		pm8916_leds: qcom,leds@a100 {
+-			compatible = "qcom,leds-qpnp";
+-			reg = <0xa100 0x100>;
+-			label = "mpp";
+-		};
+ 	};
+ 
+ 	qcom,pm8916@1 {
+diff --git a/arch/arm/boot/dts/qcom/msm8909-mdss-panels.dtsi b/arch/arm/boot/dts/qcom/msm8909-mdss-panels.dtsi
+index dd3492c..d1fbf10 100644
+--- a/arch/arm/boot/dts/qcom/msm8909-mdss-panels.dtsi
++++ b/arch/arm/boot/dts/qcom/msm8909-mdss-panels.dtsi
+@@ -23,6 +23,7 @@
+ #include "dsi-panel-auo-qvga-cmd.dtsi"
+ #include "dsi-panel-auo-cx-qvga-cmd.dtsi"
+ #include "dsi-panel-auo-400p-cmd.dtsi"
++#include "spi-panel-st7789h-cmd.dtsi"
+ 
+ &soc {
+ 	dsi_panel_pwr_supply: dsi_panel_pwr_supply {
+diff --git a/arch/arm/boot/dts/qcom/msm8909-mdss.dtsi b/arch/arm/boot/dts/qcom/msm8909-mdss.dtsi
+index 4a72782..e19fde4 100644
+--- a/arch/arm/boot/dts/qcom/msm8909-mdss.dtsi
++++ b/arch/arm/boot/dts/qcom/msm8909-mdss.dtsi
+@@ -156,6 +156,39 @@
+ 				00 c0 00 00 00 00 00 01 bb];
+ 		};
+ 	};
++
++	mdss_spi: qcom,mdss_spi {
++		compatible = "qcom,mdss-spi-display";
++		label = "mdss spi panel";
++
++		qcom,mdss-fb-map = <&mdss_fb0>;
++		qcom,mdss-mdp = <&mdss_mdp>;
++		vdd-supply = <&pm8916_l17>;
++		vddio-supply = <&pm8916_l6>;
++
++		qcom,panel-supply-entries {
++		#address-cells = <1>;
++			#size-cells = <0>;
++
++			qcom,panel-supply-entry@0 {
++				reg = <0>;
++				qcom,supply-name = "vdd";
++				qcom,supply-min-voltage = <2850000>;
++				qcom,supply-max-voltage = <2850000>;
++				qcom,supply-enable-load = <100000>;
++				qcom,supply-disable-load = <100>;
++			};
++
++			qcom,panel-supply-entry@1 {
++				reg = <1>;
++				qcom,supply-name = "vddio";
++				qcom,supply-min-voltage = <1800000>;
++				qcom,supply-max-voltage = <1800000>;
++				qcom,supply-enable-load = <100000>;
++				qcom,supply-disable-load = <100>;
++			};
++		};
++	};
+ };
+ 
+ #include "msm8909-mdss-panels.dtsi"
+diff --git a/arch/arm/boot/dts/qcom/msm8909.dtsi b/arch/arm/boot/dts/qcom/msm8909.dtsi
+index 8bb6b15..18dc94e4 100644
+--- a/arch/arm/boot/dts/qcom/msm8909.dtsi
++++ b/arch/arm/boot/dts/qcom/msm8909.dtsi
+@@ -1178,7 +1178,7 @@
+ 		      <0x7884000 0x23000>;
+ 		interrupt-names = "spi_irq", "spi_bam_irq";
+ 		interrupts = <0 100 0>, <0 238 0>;
+-		spi-max-frequency = <19200000>;
++		spi-max-frequency = <48000000>;
+ 		pinctrl-names = "spi_default", "spi_sleep";
+ 		pinctrl-0 = <&spi0_default &spi0_cs0_active>;
+ 		pinctrl-1 = <&spi0_sleep &spi0_cs0_sleep>;
+@@ -1191,6 +1191,7 @@
+ 		qcom,ver-reg-exists;
+ 		qcom,bam-consumer-pipe-index = <14>;
+ 		qcom,bam-producer-pipe-index = <15>;
++		qcom,rt-priority;
+ 		qcom,master-id = <86>;
+ };
+ 
+diff --git a/arch/arm/boot/dts/qcom/msm8909w-wtp.dts b/arch/arm/boot/dts/qcom/msm8909w-wtp.dts
+index 57e91a3..b4ee9e7 100644
+--- a/arch/arm/boot/dts/qcom/msm8909w-wtp.dts
++++ b/arch/arm/boot/dts/qcom/msm8909w-wtp.dts
+@@ -71,11 +71,63 @@
+ 	};
+ };
+ 
+-&i2c_1 {
+-	status = "disabled";
++&spi_0{ /* BLSP1 QUP5 */
++	status = "okay";
++	qcom,mdss_spi_client {
++		reg = <0>;
++		compatible = "qcom,mdss-spi-client";
++		label = "MDSS SPI QUP5 CLIENT";
++		dc-gpio = <&msm_gpio 31 0>;
++		spi-max-frequency = <48000000>;
++		spi-min-frequency = <10000000>;
++	};
++};
++
++&pm8916_mpps {
++	mpp@a100 { /* MPP 2 */
++		/* Backlight PWM */
++		status = "okay";
++		qcom,mode = <6>;/* Digital output */
++		qcom,invert = <0>;/* Disable invert */
++		qcom,src-sel = <4>;/* DTEST1 */
++		qcom,vin-sel = <0>;/* VPH_PWR */
++		qcom,master-en = <1>;/* Enable MPP */
++		qcom,cs-out = <7>;
++	};
++};
++
++#include "spi-panel-st7789h-cmd.dtsi"
++
++&mdss_mdp {
++	qcom,mdss-pref-prim-intf = "spi";
+ };
+ 
+-&spi_0 {
++&spi_st7789h_cmd {
++	qcom,mdss-spi-bl-pmic-control-type = "bl_ctrl_pwm";
++	qcom,mdss-spi-bl-pmic-pwm-frequency = <30>;
++	qcom,mdss-spi-bl-pmic-bank-select = <0>;
++	qcom,mdss-spi-pwm-gpio = <&pm8916_mpps 2 0>;
++};
++
++/*
++&pmx_mdss_te {
++	qcom,pin-func = <0>;
++	qcom,num-grp-pins = <1>;
++	qcom,pins = <&gp 24>;
++};
++*/
++
++&mdss_spi {
++	qcom,spi-pref-prim-pan = <&spi_st7789h_cmd>;
++	pinctrl-names = "mdss_default", "mdss_sleep";
++	pinctrl-0 = <&mdss_te_active>;
++	pinctrl-1 = <&mdss_te_suspend>;
++
++	qcom,platform-te-gpio = <&msm_gpio 24 0>;
++	qcom,platform-reset-gpio = <&msm_gpio 25 0>;
++};
++
++&i2c_1 {
+ 	status = "disabled";
+ };
+ 
+diff --git a/arch/arm/boot/dts/qcom/spi-panel-st7789h-cmd.dtsi b/arch/arm/boot/dts/qcom/spi-panel-st7789h-cmd.dtsi
+new file mode 100644
+index 0000000..cfa5ba13
+--- /dev/null
++++ b/arch/arm/boot/dts/qcom/spi-panel-st7789h-cmd.dtsi
+@@ -0,0 +1,62 @@
++/* Copyright (c) 2017, The Linux Foundation. All rights reserved.
++ *
++ * This program is free software; you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License version 2 and
++ * only version 2 as published by the Free Software Foundation.
++ *
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details.
++ */
++
++&mdss_mdp {
++	spi_st7789h_cmd: qcom,mdss_spi_st7789h_cmd {
++		qcom,mdss-spi-panel-name = "st7789h command mode spi panel";
++		qcom,mdss-spi-panel-destination = "display_1";
++		qcom,mdss-spi-panel-controller = <&mdss_spi>;
++		qcom,mdss-spi-panel-framerate = <30>;
++		qcom,mdss-spi-panel-width = <240>;
++		qcom,mdss-spi-panel-height = <204>;
++		qcom,mdss-spi-h-front-porch = <79>;
++		qcom,mdss-spi-h-back-porch = <59>;
++		qcom,mdss-spi-h-pulse-width = <60>;
++		qcom,mdss-spi-v-back-porch = <10>;
++		qcom,mdss-spi-v-front-porch = <7>;
++		qcom,mdss-spi-v-pulse-width = <2>;
++		qcom,mdss-spi-h-left-border = <0>;
++		qcom,mdss-spi-h-right-border = <0>;
++		qcom,mdss-spi-v-top-border = <0>;
++		qcom,mdss-spi-v-bottom-border = <0>;
++		qcom,mdss-spi-bpp = <16>;
++		qcom,mdss-spi-on-command = [00 02 36 00
++			00 02 3a 05
++			00 01 21
++			00 05 2a 00 00 00 ef
++			00 05 2b 00 00 00 cb
++			00 06 b2 7f 7f 00 33 33
++			00 02 b7 35
++			00 02 bb 16
++			00 02 c0 2c
++			00 02 c2 01
++			00 02 c3 03
++			00 02 c4 20
++			00 02 c6 1f
++			00 03 d0 a4 a1
++			00 0f e0 d0 04 08 08 08 25 2a 43 42 2b 18 18 22 23
++			00 0f e1 d0 03 07 08 05 23 2a 43 42 2b 1a 1a 22 23
++			00 02 35 00
++			78 01 11
++			00 01 29
++			00 01 2c];
++		qcom,mdss-spi-off-command = [20 01 28
++				 20 01 10];
++		qcom,mdss-spi-bl-min-level = <1>;
++		qcom,mdss-spi-bl-max-level = <255>;
++		qcom,mdss-spi-bl-pmic-control-type = "bl_ctrl_pwm";
++		qcom,mdss-spi-bl-pmic-pwm-frequency = <30>;
++		qcom,mdss-spi-bl-pmic-bank-select = <0>;
++		qcom,mdss-spi-pwm-gpio = <&pm8916_mpps 2 0>;
++		qcom,mdss-spi-reset-sequence = <1 20>, <0 1>, <1 20>;
++	};
++};
+diff --git a/arch/arm/configs/msm8909w_defconfig b/arch/arm/configs/msm8909w_defconfig
+index 23209d4..e2ddd77 100644
+--- a/arch/arm/configs/msm8909w_defconfig
++++ b/arch/arm/configs/msm8909w_defconfig
+@@ -348,6 +348,7 @@ CONFIG_FB_MSM_MDSS=y
+ CONFIG_FB_MSM_MDSS_WRITEBACK=y
+ CONFIG_FB_MSM_MDSS_XLOG_DEBUG=y
+ CONFIG_FB_MSM_MDSS_MDP3=y
++CONFIG_FB_MSM_MDSS_SPI_PANEL=y
+ CONFIG_BACKLIGHT_LCD_SUPPORT=y
+ # CONFIG_LCD_CLASS_DEVICE is not set
+ CONFIG_BACKLIGHT_CLASS_DEVICE=y
+-- 
+1.9.1
+

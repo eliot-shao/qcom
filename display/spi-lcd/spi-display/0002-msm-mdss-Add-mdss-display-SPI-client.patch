@@ -1,0 +1,250 @@
+From 0366ee835d87e7fa4c62eace992dbd0e5d0b831f Mon Sep 17 00:00:00 2001
+From: Wang Xudong <wxudong@qti.qualcomm.com>
+Date: Fri, 12 May 2017 10:46:23 +0800
+Subject: [PATCH 2/4] msm: mdss: Add mdss display SPI client
+
+Change-Id: Ib2988720580cb5871781589b1053b979033c86a0
+---
+ .../devicetree/bindings/fb/mdss-spi-client.txt     |  30 ++++
+ drivers/video/msm/mdss/mdss_spi_client.c           | 164 +++++++++++++++++++++
+ drivers/video/msm/mdss/mdss_spi_client.h           |  20 +++
+ 3 files changed, 214 insertions(+)
+ create mode 100644 Documentation/devicetree/bindings/fb/mdss-spi-client.txt
+ create mode 100644 drivers/video/msm/mdss/mdss_spi_client.c
+ create mode 100644 drivers/video/msm/mdss/mdss_spi_client.h
+
+diff --git a/Documentation/devicetree/bindings/fb/mdss-spi-client.txt b/Documentation/devicetree/bindings/fb/mdss-spi-client.txt
+new file mode 100644
+index 0000000..bff7d6e
+--- /dev/null
++++ b/Documentation/devicetree/bindings/fb/mdss-spi-client.txt
+@@ -0,0 +1,30 @@
++Qualcomm mdss-spi-client
++
++mdss-spi-client is for spi display send the FB data to spi master.
++
++Required properties:
++- compatible : should be "qcom,mdss-spi-client"
++- spi-max-frequency : Maximum SPI clocking speed of device in Hz
++- dc-gpio: Pull down this gpio indicate current package is command,
++	   Pull up this gpio indicate current package is parameter or pixel.
++
++Optional properties:
++- label: A string used to describe the controller used.
++ - spi-cpol : Empty property indicating device requires inverse
++  clock polarity (CPOL) mode
++- spi-cpha :  Empty property indicating device requires shifted
++  clock phase (CPHA) mode
++- spi-cs-high :  Empty property indicating device requires
++  chip select active high
++
++Example:
++spi@78b9000 { /* BLSP1 QUP5 */
++               qcom,mdss_spi_client{
++               reg = <0>;
++               compatible = "qcom,mdss-spi-client";
++               label = "MDSS SPI QUP5 CLIENT";
++               dc-gpio = <&msm_gpio 110 0>;
++               spi-max-frequency = <50000000>;
++               };
++       };
++};
+diff --git a/drivers/video/msm/mdss/mdss_spi_client.c b/drivers/video/msm/mdss/mdss_spi_client.c
+new file mode 100644
+index 0000000..bc89133
+--- /dev/null
++++ b/drivers/video/msm/mdss/mdss_spi_client.c
+@@ -0,0 +1,164 @@
++/* Copyright (c) 2017, The Linux Foundation. All rights reserved.
++ *
++ * This program is free software; you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License version 2 and
++ * only version 2 as published by the Free Software Foundation.
++ *
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details.
++ */
++
++#include <linux/module.h>
++#include <linux/kernel.h>
++#include <linux/spi/spi.h>
++#include <linux/of_gpio.h>
++#include <linux/gpio.h>
++#include <linux/qpnp/pin.h>
++#include <linux/delay.h>
++
++#define SPI_PANEL_COMMAND_LEN 1
++static struct spi_device *mdss_spi_client;
++static int dc_gpio;
++
++int mdss_spi_tx_command(const void *buf)
++{
++	int rc = 0;
++	struct spi_transfer t = {
++		.tx_buf = buf,
++		.len    = SPI_PANEL_COMMAND_LEN,
++	};
++	struct spi_message m;
++
++	if (!mdss_spi_client) {
++		pr_err("%s: spi client not available\n", __func__);
++		return -EINVAL;
++	}
++
++	mdss_spi_client->bits_per_word = 8;
++
++	spi_message_init(&m);
++	spi_message_add_tail(&t, &m);
++
++	/*pull down dc gpio indicate this is command*/
++	gpio_set_value(dc_gpio, 0);
++	rc = spi_sync(mdss_spi_client, &m);
++	gpio_set_value(dc_gpio, 1);
++
++	return rc;
++}
++
++int mdss_spi_tx_parameter(const void *buf, size_t len)
++{
++	int rc = 0;
++	struct spi_transfer t = {
++		.tx_buf = buf,
++		.len    = len,
++	};
++	struct spi_message m;
++
++	if (!mdss_spi_client) {
++		pr_err("%s: spi client not available\n", __func__);
++		return -EINVAL;
++	}
++
++	mdss_spi_client->bits_per_word = 8;
++
++	spi_message_init(&m);
++	spi_message_add_tail(&t, &m);
++	rc = spi_sync(mdss_spi_client, &m);
++
++	return rc;
++}
++
++int mdss_spi_tx_pixel(const void *buf, size_t len)
++{
++	int rc = 0;
++	struct spi_transfer t = {
++		.tx_buf = buf,
++		.len    = len,
++		};
++	struct spi_message m;
++
++	if (!mdss_spi_client) {
++		pr_err("%s: spi client not available\n", __func__);
++		return -EINVAL;
++	}
++
++	mdss_spi_client->bits_per_word = 16;
++
++	spi_message_init(&m);
++	spi_message_add_tail(&t, &m);
++	rc = spi_sync(mdss_spi_client, &m);
++
++	return rc;
++}
++
++static int mdss_spi_client_probe(struct spi_device *spidev)
++{
++	int irq;
++	int cs;
++	int cpha, cpol, cs_high;
++	u32 max_speed;
++	struct device_node *np;
++
++	irq = spidev->irq;
++	cs = spidev->chip_select;
++	cpha = (spidev->mode & SPI_CPHA) ? 1:0;
++	cpol = (spidev->mode & SPI_CPOL) ? 1:0;
++	cs_high = (spidev->mode & SPI_CS_HIGH) ? 1:0;
++	max_speed = spidev->max_speed_hz;
++	np = spidev->dev.of_node;
++	pr_debug("cs[%x] CPHA[%x] CPOL[%x] CS_HIGH[%x] Max_speed[%d]\n",
++		cs, cpha, cpol, cs_high, max_speed);
++
++	dc_gpio = of_get_named_gpio(np, "dc-gpio", 0);
++	if (!gpio_is_valid(dc_gpio))
++		pr_err("%s %d,spi panel dc gpio is not valid\n",
++						__func__, __LINE__);
++
++
++	if (gpio_request(dc_gpio, "dc-gpios"))
++		pr_err("%s %d spi panel dc gpio_request failed\n",
++						__func__, __LINE__);
++
++
++	if (gpio_direction_output(dc_gpio, 1))
++		pr_err("%s %d set spi panel dc gpio direction failed\n",
++						__func__, __LINE__);
++
++	mdss_spi_client = spidev;
++	return 0;
++}
++
++
++static const struct of_device_id mdss_spi_dt_match[] = {
++	{ .compatible = "qcom,mdss-spi-client" },
++	{},
++};
++
++static struct spi_driver mdss_spi_client_driver = {
++	.probe = mdss_spi_client_probe,
++	.driver = {
++	.name = "mdss-spi-client",
++	.owner  = THIS_MODULE,
++	.of_match_table = mdss_spi_dt_match,
++	},
++};
++
++static int __init mdss_spi_init(void)
++{
++	int ret;
++
++	ret = spi_register_driver(&mdss_spi_client_driver);
++
++	return 0;
++}
++module_init(mdss_spi_init);
++
++static void __exit mdss_spi_exit(void)
++{
++	spi_register_driver(&mdss_spi_client_driver);
++}
++module_exit(mdss_spi_exit);
+diff --git a/drivers/video/msm/mdss/mdss_spi_client.h b/drivers/video/msm/mdss/mdss_spi_client.h
+new file mode 100644
+index 0000000..6042d35
+--- /dev/null
++++ b/drivers/video/msm/mdss/mdss_spi_client.h
+@@ -0,0 +1,20 @@
++/* Copyright (c) 2017, The Linux Foundation. All rights reserved.
++ *
++ * This program is free software; you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License version 2 and
++ * only version 2 as published by the Free Software Foundation.
++ *
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details.
++ */
++
++#ifndef __MDSS_SPI_CLINET_H__
++#define __MDSS_SPI_CLINET_H__
++
++int mdss_spi_tx_command(const void *buf);
++int mdss_spi_tx_parameter(const void *buf, size_t len);
++int mdss_spi_tx_pixel(const void *buf, size_t len);
++
++#endif /* End of __MDSS_SPI_CLINET_H__ */
+-- 
+1.9.1
+

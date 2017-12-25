@@ -1,0 +1,253 @@
+From 11028d620c3d6605c31b10e6fb57dbcef8e2c3d2 Mon Sep 17 00:00:00 2001
+From: Wang Xudong <wxudong@qti.qualcomm.com>
+Date: Thu, 18 May 2017 17:55:06 +0800
+Subject: [PATCH 4/4] msm: mdss: Add HW VSYNC support for SPI display
+
+Change-Id: I1418d37bdee0228244602e5b575cec52dbcb3924
+---
+ drivers/video/msm/mdss/mdp3_ctrl.c      | 23 ++++++---
+ drivers/video/msm/mdss/mdss_spi_panel.c | 92 ++++++++++++++++++++++++++++++++-
+ drivers/video/msm/mdss/mdss_spi_panel.h | 15 ++++++
+ 3 files changed, 121 insertions(+), 9 deletions(-)
+
+diff --git a/drivers/video/msm/mdss/mdp3_ctrl.c b/drivers/video/msm/mdss/mdp3_ctrl.c
+index d865a7b..729aa17 100644
+--- a/drivers/video/msm/mdss/mdp3_ctrl.c
++++ b/drivers/video/msm/mdss/mdp3_ctrl.c
+@@ -281,7 +281,8 @@ void vsync_count_down(void *arg)
+ void mdp3_ctrl_reset_countdown(struct mdp3_session_data *session,
+ 		struct msm_fb_data_type *mfd)
+ {
+-	if (mdp3_ctrl_get_intf_type(mfd) == MDP3_DMA_OUTPUT_SEL_DSI_CMD)
++	if (mdp3_ctrl_get_intf_type(mfd) == MDP3_DMA_OUTPUT_SEL_DSI_CMD ||
++		mdp3_ctrl_get_intf_type(mfd) == MDP3_DMA_OUTPUT_SEL_SPI_CMD)
+ 		atomic_set(&session->vsync_countdown, VSYNC_EXPIRE_TICK);
+ }
+ 
+@@ -291,8 +292,11 @@ static int mdp3_ctrl_vsync_enable(struct msm_fb_data_type *mfd, int enable)
+ 	struct mdp3_notification vsync_client;
+ 	struct mdp3_notification *arg = NULL;
+ 	bool mod_vsync_timer = false;
++	int intf_type;
+ 
+ 	pr_debug("mdp3_ctrl_vsync_enable =%d\n", enable);
++
++	intf_type = mdp3_ctrl_get_intf_type(mfd);
+ 	mdp3_session = (struct mdp3_session_data *)mfd->mdp.private1;
+ 	if (!mdp3_session || !mdp3_session->panel || !mdp3_session->dma ||
+ 		!mdp3_session->intf)
+@@ -319,8 +323,9 @@ static int mdp3_ctrl_vsync_enable(struct msm_fb_data_type *mfd, int enable)
+ 	}
+ 
+ 	if (enable) {
+-		if (mdp3_session->status == 1 &&
+-			(mdp3_session->vsync_before_commit ||
++		if (mdp3_session->status == 1 
++			&&(intf_type != MDP3_DMA_OUTPUT_SEL_SPI_CMD)
++			&&(mdp3_session->vsync_before_commit ||
+ 			!mdp3_session->intf->active)) {
+ 			mod_vsync_timer = true;
+ 		} else if (!mdp3_session->clk_on) {
+@@ -330,9 +335,13 @@ static int mdp3_ctrl_vsync_enable(struct msm_fb_data_type *mfd, int enable)
+ 		}
+ 	}
+ 
+-	mdp3_clk_enable(1, 0);
+-	mdp3_session->dma->vsync_enable(mdp3_session->dma, arg);
+-	mdp3_clk_enable(0, 0);
++	if(intf_type == MDP3_DMA_OUTPUT_SEL_SPI_CMD) {
++		mdp3_spi_vsync_enable(mdp3_session->panel, arg);
++	} else {
++		mdp3_clk_enable(1, 0);
++		mdp3_session->dma->vsync_enable(mdp3_session->dma, arg);
++		mdp3_clk_enable(0, 0);
++	}
+ 
+ 	/*
+ 	 * Need to fake vsync whenever dsi interface is not
+@@ -341,7 +350,7 @@ static int mdp3_ctrl_vsync_enable(struct msm_fb_data_type *mfd, int enable)
+ 	if (mod_vsync_timer) {
+ 		mod_timer(&mdp3_session->vsync_timer,
+ 			jiffies + msecs_to_jiffies(mdp3_session->vsync_period));
+-	} else if (!enable) {
++	} else if (!enable && (intf_type != MDP3_DMA_OUTPUT_SEL_SPI_CMD)) {
+ 		del_timer(&mdp3_session->vsync_timer);
+ 	}
+ 
+diff --git a/drivers/video/msm/mdss/mdss_spi_panel.c b/drivers/video/msm/mdss/mdss_spi_panel.c
+index 7e2ceb3..a270520 100644
+--- a/drivers/video/msm/mdss/mdss_spi_panel.c
++++ b/drivers/video/msm/mdss/mdss_spi_panel.c
+@@ -346,6 +346,52 @@ static int mdss_spi_panel_event_handler(struct mdss_panel_data *pdata,
+ 	return rc;
+ }
+ 
++int is_spi_panel_continuous_splash_on(struct mdss_panel_data *pdata)
++{
++	int i = 0, voltage = 0;
++	struct dss_vreg *vreg;
++	int num_vreg;
++	struct spi_panel_data *ctrl_pdata = NULL;
++
++	ctrl_pdata = container_of(pdata, struct spi_panel_data,
++			panel_data);
++	vreg = ctrl_pdata->panel_power_data.vreg_config;
++	num_vreg = ctrl_pdata->panel_power_data.num_vreg;
++
++	for (i = 0; i < num_vreg; i++) {
++		if (regulator_is_enabled(vreg[i].vreg) <= 0)
++			return false;
++		voltage = regulator_get_voltage(vreg[i].vreg);
++		if (!(voltage >= vreg[i].min_voltage &&
++			 voltage <= vreg[i].max_voltage))
++			return false;
++	}
++
++	return true;
++}
++
++static void enable_spi_panel_te_irq(struct spi_panel_data *ctrl_pdata,
++							bool enable)
++{
++	static bool is_enabled = true;
++
++	if (is_enabled == enable)
++		return;
++
++	if (!gpio_is_valid(ctrl_pdata->disp_te_gpio)) {
++		pr_err("%s:%d,SPI panel TE GPIO not configured\n",
++			   __func__, __LINE__);
++		return;
++	}
++
++	if (enable)
++		enable_irq(gpio_to_irq(ctrl_pdata->disp_te_gpio));
++	else
++		disable_irq(gpio_to_irq(ctrl_pdata->disp_te_gpio));
++
++	is_enabled = enable;
++}
++
+ int mdss_spi_panel_kickoff(struct mdss_panel_data *pdata,
+ 			char *buf, int len, int dma_stride)
+ {
+@@ -384,6 +430,7 @@ int mdss_spi_panel_kickoff(struct mdss_panel_data *pdata,
+ 	}
+ 
+ 	init_completion(&ctrl_pdata->spi_panel_te);
++	enable_spi_panel_te_irq(ctrl_pdata, true);
+ 
+ 	rc = wait_for_completion_timeout(&ctrl_pdata->spi_panel_te,
+ 				   msecs_to_jiffies(SPI_PANEL_TE_TIMEOUT));
+@@ -1064,19 +1111,60 @@ static int mdss_spi_panel_regulator_init(struct platform_device *pdev)
+ 	return rc;
+ 
+ }
++
+ irqreturn_t spi_panel_te_handler(int irq, void *data)
+ {
+-	struct spi_panel_data *ctrl_pdata =
+-		(struct spi_panel_data *)data;
++	struct spi_panel_data *ctrl_pdata = (struct spi_panel_data *)data;
++	static int count = 2;
+ 
+ 	if (!ctrl_pdata) {
+ 		pr_err("%s: SPI display not available\n", __func__);
+ 		return IRQ_HANDLED;
+ 	}
+ 	complete(&ctrl_pdata->spi_panel_te);
++
++	if (ctrl_pdata->vsync_client.handler && !(--count)) {
++		ctrl_pdata->vsync_client.handler(ctrl_pdata->vsync_client.arg);
++		count = 2;
++	}
++
+ 	return IRQ_HANDLED;
+ }
+ 
++void mdp3_spi_vsync_enable(struct mdss_panel_data *pdata,
++				struct mdp3_notification *vsync_client)
++{
++	int updated = 0;
++	struct spi_panel_data *ctrl_pdata = NULL;
++
++	if (pdata == NULL) {
++		pr_err("%s: Invalid input data\n", __func__);
++		return;
++	}
++
++	ctrl_pdata = container_of(pdata, struct spi_panel_data,
++				panel_data);
++
++	if (vsync_client) {
++		if (ctrl_pdata->vsync_client.handler != vsync_client->handler) {
++			ctrl_pdata->vsync_client = *vsync_client;
++			updated = 1;
++		}
++	} else {
++		if (ctrl_pdata->vsync_client.handler) {
++			ctrl_pdata->vsync_client.handler = NULL;
++			ctrl_pdata->vsync_client.arg = NULL;
++			updated = 1;
++		}
++	}
++
++	if (updated) {
++		if (vsync_client && vsync_client->handler)
++			enable_spi_panel_te_irq(ctrl_pdata, true);
++		else
++			enable_spi_panel_te_irq(ctrl_pdata, false);
++	}
++}
+ 
+ static struct device_node *mdss_spi_pref_prim_panel(
+ 		struct platform_device *pdev)
+diff --git a/drivers/video/msm/mdss/mdss_spi_panel.h b/drivers/video/msm/mdss/mdss_spi_panel.h
+index 4a9f605..a155f65 100644
+--- a/drivers/video/msm/mdss/mdss_spi_panel.h
++++ b/drivers/video/msm/mdss/mdss_spi_panel.h
+@@ -23,6 +23,7 @@
+ #include <linux/gpio.h>
+ 
+ #include "mdss_panel.h"
++#include "mdp3_dma.h"
+ 
+ #define MDSS_MAX_BL_BRIGHTNESS 255
+ 
+@@ -84,6 +85,8 @@ struct spi_panel_data {
+ 	struct spi_pinctrl_res pin_res;
+ 	struct dss_module_power panel_power_data;
+ 	struct completion spi_panel_te;
++	struct mdp3_notification vsync_client;
++	unsigned int vsync_status;
+ 	int byte_pre_frame;
+ 	char *tx_buf;
+ 	u8 ctrl_state;
+@@ -104,12 +107,24 @@ struct spi_panel_data {
+ };
+ int mdss_spi_panel_kickoff(struct mdss_panel_data *pdata,
+ 				char *buf, int len, int stride);
++int is_spi_panel_continuous_splash_on(struct mdss_panel_data *pdata);
++void mdp3_spi_vsync_enable(struct mdss_panel_data *pdata,
++				struct mdp3_notification *vsync_client);
+ #else
+ 
+ int mdss_spi_panel_kickoff(struct mdss_panel_data *pdata,
+ 				char *buf, int len, int stride){
+ 	return 0;
+ }
++static inline int is_spi_panel_continuous_splash_on(
++				struct mdss_panel_data *pdata)
++{
++	return 0;
++}
++static inline int mdp3_spi_vsync_enable(struct mdss_panel_data *pdata,
++				struct mdp3_notification *vsync_client){
++	return 0;
++}
+ 
+ #endif/* End of CONFIG_FB_MSM_MDSS_SPI_PANEL && ONFIG_SPI_QUP */
+ 
+-- 
+1.9.1
+

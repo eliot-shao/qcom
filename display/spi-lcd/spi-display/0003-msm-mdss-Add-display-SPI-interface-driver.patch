@@ -1,0 +1,2547 @@
+From 308adc3d777ddf89efc79df7b0e89ed96891ef5a Mon Sep 17 00:00:00 2001
+From: Wang Xudong <wxudong@qti.qualcomm.com>
+Date: Fri, 12 May 2017 11:37:57 +0800
+Subject: [PATCH 3/4] msm: mdss: Add display SPI interface driver
+
+Change-Id: I3a0ca9495082aaee79c2d426ff7ba0bb6735b819
+---
+ .../devicetree/bindings/fb/mdss-spi-panel.txt      |  182 +++
+ drivers/video/msm/mdss/Kconfig                     |   10 +
+ drivers/video/msm/mdss/Makefile                    |    5 +
+ drivers/video/msm/mdss/mdp3.c                      |   26 +-
+ drivers/video/msm/mdss/mdp3.h                      |    2 +
+ drivers/video/msm/mdss/mdp3_ctrl.c                 |  183 ++-
+ drivers/video/msm/mdss/mdp3_dma.c                  |   30 +-
+ drivers/video/msm/mdss/mdp3_dma.h                  |    3 +-
+ drivers/video/msm/mdss/mdp3_ppp.c                  |   11 +-
+ drivers/video/msm/mdss/mdss_dsi.c                  |    8 +
+ drivers/video/msm/mdss/mdss_fb.c                   |    2 +-
+ drivers/video/msm/mdss/mdss_panel.h                |   10 +
+ drivers/video/msm/mdss/mdss_spi_panel.c            | 1412 ++++++++++++++++++++
+ drivers/video/msm/mdss/mdss_spi_panel.h            |  116 ++
+ 14 files changed, 1950 insertions(+), 50 deletions(-)
+ create mode 100644 Documentation/devicetree/bindings/fb/mdss-spi-panel.txt
+ create mode 100644 drivers/video/msm/mdss/mdss_spi_panel.c
+ create mode 100644 drivers/video/msm/mdss/mdss_spi_panel.h
+
+diff --git a/Documentation/devicetree/bindings/fb/mdss-spi-panel.txt b/Documentation/devicetree/bindings/fb/mdss-spi-panel.txt
+new file mode 100644
+index 0000000..625fcf2
+--- /dev/null
++++ b/Documentation/devicetree/bindings/fb/mdss-spi-panel.txt
+@@ -0,0 +1,182 @@
++Qualcomm mdss-spi-panel
++
++mdss-spi-panel is a spi panel device which supports panels that
++are compatable with display serial interface specification.
++
++Required properties:
++- qcom,mdss-spi-panel-controller:	Specifies the phandle for the SPI controller that
++					this panel will be mapped to.
++- qcom,mdss-spi-panel-width:		Specifies panel width in pixels.
++- qcom,mdss-spi-panel-height:		Specifies panel height in pixels.
++- qcom,mdss-spi-bpp:			Specifies the panel bits per pixel.
++					3  = for rgb111
++					8  = for rgb332
++					12 = for rgb444
++					16 = for rgb565
++					18 = for rgb666
++					24 = for rgb888
++- qcom,mdss-spi-panel-destination:	A string that specifies the destination display for the panel.
++					"display_1" = DISPLAY_1
++					"display_2" = DISPLAY_2
++- qcom,mdss-spi-on-command:		A byte stream formed by multiple packets
++					byte 0: wait number of specified ms after command
++						 transmitted
++					byte 1: 8 bits length in network byte order
++					byte 3 and beyond: number byte of payload
++- qcom,mdss-spi-off-command:		A byte stream formed by multiple packets
++					byte 0: wait number of specified ms after command
++						 transmitted
++					byte 1: 8 bits length in network byte order
++					byte 3 and beyond: number byte of payload
++Optional properties:
++- qcom,mdss-spi-panel-name:		A string used as a descriptive name of the panel
++- qcom,cont-splash-enabled:		Boolean used to enable continuous splash mode.
++					If this property is specified, it is required to
++					to specify the memory reserved for the splash
++					screen using the qcom,memblock-reserve binding
++					for the framebuffer device attached to the panel.
++- qcom,mdss-spi-h-back-porch:		Horizontal back porch value in pixel.
++					6 = default value.
++- qcom,mdss-spi-h-front-porch:		Horizontal front porch value in pixel.
++					6 = default value.
++- qcom,mdss-spi-h-pulse-width:		Horizontal pulse width.
++					2 = default value.
++- qcom,mdss-spi-h-sync-skew:		Horizontal sync skew value.
++					0 = default value.
++- qcom,mdss-spi-v-back-porch:		Vertical back porch value in pixel.
++					6 = default value.
++- qcom,mdss-spi-v-front-porch:		Vertical front porch value in pixel.
++					6 = default value.
++- qcom,mdss-spi-v-pulse-width:		Vertical pulse width.
++					2 = default value.
++- qcom,mdss-spi-bl-pmic-control-type:	A string that specifies the implementation of backlight
++					control for this panel.
++					"bl_ctrl_pwm" = Backlight controlled by PWM gpio.
++					"bl_ctrl_wled" = Backlight controlled by WLED.
++					other: Unknown backlight control. (default)
++- qcom,mdss-spi-bl-min-level:		Specifies the min backlight level supported by the panel.
++					0 = default value.
++- qcom,mdss-spi-bl-max-level:		Specifies the max backlight level supported by the panel.
++					255 = default value.
++- qcom,mdss-spi-panel-framerate:	Specifies the frame rate for the panel.
++
++Example:
++&mdss_mdp {
++	spi_gc9305_qvga_cmd: qcom,mdss_spi_gc9305_qvga_cmd {
++		qcom,mdss-spi-panel-name = "gc9305 qvga command mode spi panel";
++		qcom,mdss-spi-panel-destination = "display_1";
++		qcom,mdss-spi-panel-controller = <&mdss_spi>;
++		qcom,mdss-spi-panel-framerate = <30>;
++		qcom,mdss-spi-panel-width = <240>;
++		qcom,mdss-spi-panel-height = <320>;
++		qcom,mdss-spi-h-front-porch = <79>;
++		qcom,mdss-spi-h-back-porch = <59>;
++		qcom,mdss-spi-h-pulse-width = <60>;
++		qcom,mdss-spi-v-back-porch = <10>;
++		qcom,mdss-spi-v-front-porch = <7>;
++		qcom,mdss-spi-v-pulse-width = <2>;
++		qcom,mdss-spi-h-left-border = <0>;
++		qcom,mdss-spi-h-right-border = <0>;
++		qcom,mdss-spi-v-top-border = <0>;
++		qcom,mdss-spi-v-bottom-border = <0>;
++		qcom,mdss-spi-bpp = <16>;
++		qcom,mdss-spi-on-command = [00 01 FE
++			00 01 EF
++			00 02 36 48
++			00 02 3A 05
++			00 02 35 00
++			00 03 A4 44 44
++			00 03 A5 42 42
++			00 03 AA 88 88
++			00 03 E8 12 40
++			00 03 E3 01 10
++			00 02 FF 61
++			00 02 AC 00
++			00 03 A6 2A 2A
++			00 03 A7 2B 2B
++			00 03 A8 18 18
++			00 03 A9 2A 2A
++			00 02 AD 33
++			00 02 AF 55
++			00 02 AE 2B
++			00 05 2A 00 00 00 EF
++			00 05 2B 00 00 01 3F
++			00 01 2C
++			00 07 F0 02 02 00 08 0C 10
++			00 07 F1 01 00 00 14 1D 0E
++			00 07 F2 10 09 37 04 04 48
++			00 07 F3 10 0B 3F 05 05 4E
++			00 07 F4 0D 19 17 1D 1E 0F
++			00 07 F5 06 12 13 1A 1B 0F
++			78 01 11
++			00 01 29
++			00 01 2C];
++		qcom,mdss-spi-off-command = [20 01 28
++			20 01 10];
++		qcom,mdss-spi-bl-min-level = <1>;
++		qcom,mdss-spi-bl-max-level = <4095>;
++	};
++};
++
++mdss-spi-display is a spi interface display which support send frame
++data and command to panel,compatable with SPI interface specification.
++
++Required properties:
++- compatible:Must be "qcom,mdss-spi-display"
++- vdd-supply:Phandle for vdd regulator device node.
++- vddio-supply:Phandle for vdd-io regulator device node.
++- qcom,mdss-fb-map:pHandle that specifies the framebuffer to which the
++		   interface is mapped.
++- qcom,mdss-mdp:pHandle that specifies the mdss-mdp device.
++- qcom,panel-supply-entries:A node that lists the elements of the supply used to
++			    power the DSI panel. There can be more than one instance
++			    of this binding, in which case the entry would be appended
++			    with the supply entry index. For a detailed description of
++			    fields in the supply entry, refer to the qcom,ctrl-supply-entries
++			    binding above.
++
++Optional properties:
++- label:A string used to describe the controller used.
++	-- qcom,supply-name: name of the supply (vdd/vdda/vddio)
++	-- qcom,supply-min-voltage: minimum voltage level (uV)
++	-- qcom,supply-max-voltage: maximum voltage level (uV)
++	-- qcom,supply-enable-load: load drawn (uA) from enabled supply
++	-- qcom,supply-disable-load: load drawn (uA) from disabled supply
++	-- qcom,supply-pre-on-sleep: time to sleep (ms) before turning on
++	-- qcom,supply-post-on-sleep: time to sleep (ms) after turning on
++	-- qcom,supply-pre-off-sleep: time to sleep (ms) before turning off
++	-- qcom,supply-post-off-sleep: time to sleep (ms) after turning off
++
++Example:
++	mdss_spi: qcom,mdss_spi {
++		compatible = "qcom,mdss-spi-display";
++		label = "mdss spi panel";
++
++		qcom,mdss-fb-map = <&mdss_fb0>;
++		qcom,mdss-mdp = <&mdss_mdp>;
++		vdd-supply = <&pm8909_l17>;
++		vddio-supply = <&pm8909_l6>;
++
++		qcom,panel-supply-entries {
++		#address-cells = <1>;
++			#size-cells = <0>;
++
++			qcom,panel-supply-entry@0 {
++				reg = <0>;
++				qcom,supply-name = "vdd";
++				qcom,supply-min-voltage = <2850000>;
++				qcom,supply-max-voltage = <2850000>;
++				qcom,supply-enable-load = <100000>;
++				qcom,supply-disable-load = <100>;
++			};
++
++			qcom,panel-supply-entry@1 {
++				reg = <1>;
++				qcom,supply-name = "vddio";
++				qcom,supply-min-voltage = <1800000>;
++				qcom,supply-max-voltage = <1800000>;
++				qcom,supply-enable-load = <100000>;
++				qcom,supply-disable-load = <100>;
++			};
++		};
++	};
+diff --git a/drivers/video/msm/mdss/Kconfig b/drivers/video/msm/mdss/Kconfig
+index 3029d0e..741bc97 100644
+--- a/drivers/video/msm/mdss/Kconfig
++++ b/drivers/video/msm/mdss/Kconfig
+@@ -12,6 +12,16 @@ config FB_MSM_MDSS_HDMI_PANEL
+ 	The MDSS HDMI Panel provides support for transmitting TMDS signals of
+ 	MDSS frame buffer data to connected hdmi compliant TVs, monitors etc.
+ 
++config FB_MSM_MDSS_SPI_PANEL
++	depends on FB_MSM_MDSS
++	bool "Support SPI panel feature"
++	default n
++	---help---
++	The MDSS SPI Panel provides support for transmitting SPI signals of
++	MDSS frame buffer data to connected panel. Limited by SPI rate, the
++	current max fps only reach to 27fps, and limited by MDP hardware
++	architecture only supply on MDP3.
++
+ config FB_MSM_MDSS_HDMI_MHL_SII8334
+ 	depends on FB_MSM_MDSS_HDMI_PANEL
+ 	bool 'MHL SII8334 support '
+diff --git a/drivers/video/msm/mdss/Makefile b/drivers/video/msm/mdss/Makefile
+index 346b23d..6ac72f7 100644
+--- a/drivers/video/msm/mdss/Makefile
++++ b/drivers/video/msm/mdss/Makefile
+@@ -45,6 +45,11 @@ obj-$(CONFIG_FB_MSM_MDSS) += mdss-dsi.o
+ obj-$(CONFIG_FB_MSM_MDSS) += mdss_panel.o
+ obj-$(CONFIG_FB_MSM_MDSS) += mdss_io_util.o
+ 
++ifeq ($(CONFIG_SPI_QUP),y)
++obj-$(CONFIG_FB_MSM_MDSS_SPI_PANEL) += mdss_spi_client.o
++obj-$(CONFIG_FB_MSM_MDSS_SPI_PANEL) += mdss_spi_panel.o
++endif
++
+ ifneq ($(CONFIG_FB_MSM_MDSS_MDP3), y)
+ obj-$(CONFIG_FB_MSM_MDSS) += mdss_hdmi_util.o
+ obj-$(CONFIG_FB_MSM_MDSS) += mdss_hdmi_edid.o
+diff --git a/drivers/video/msm/mdss/mdp3.c b/drivers/video/msm/mdss/mdp3.c
+index 052c996..44a6241 100644
+--- a/drivers/video/msm/mdss/mdp3.c
++++ b/drivers/video/msm/mdss/mdp3.c
+@@ -103,6 +103,7 @@ struct mdp3_bus_handle_map mdp3_bus_handle[MDP3_BUS_HANDLE_MAX] = {
+ 
+ static struct mdss_panel_intf pan_types[] = {
+ 	{"dsi", MDSS_PANEL_INTF_DSI},
++	{"spi", MDSS_PANEL_INTF_SPI},
+ };
+ static char mdss_mdp3_panel[MDSS_MAX_PANEL_LEN];
+ 
+@@ -1906,6 +1907,12 @@ int mdp3_get_img(struct msmfb_data *img, struct mdp3_img_data *data, int client)
+ 				goto err_detach;
+ 			}
+ 
++#if 0
++			dma_buf_begin_cpu_access(data->srcp_dma_buf, 0, data->len, DMA_BIDIRECTIONAL);
++			data->addr = (dma_addr_t)dma_buf_kmap(data->srcp_dma_buf, 0);
++			pr_err("%p: data len 0x%lx, offset %d\n", (void *)data->addr, data->len, img->offset);
++#endif
++
+ 			ret = mdss_smmu_map_dma_buf(data->srcp_dma_buf,
+ 					data->srcp_table, dom,
+ 				&data->addr, &data->len, DMA_BIDIRECTIONAL);
+@@ -1915,8 +1922,8 @@ int mdp3_get_img(struct msmfb_data *img, struct mdp3_img_data *data, int client)
+ 				goto err_unmap;
+ 			}
+ 
+-		data->mapped = true;
+-		data->skip_detach = false;
++			data->mapped = true;
++			data->skip_detach = false;
+ 	}
+ done:
+ 	if (!ret && (img->offset < data->len)) {
+@@ -2221,6 +2228,7 @@ static int mdp3_continuous_splash_on(struct mdss_panel_data *pdata)
+ {
+ 	struct mdss_panel_info *panel_info = &pdata->panel_info;
+ 	struct mdp3_bus_handle_map *bus_handle;
++	int frame_rate = DEFAULT_FRAME_RATE;
+ 	u64 ab = 0;
+ 	u64 ib = 0;
+ 	u64 mdp_clk_rate = 0;
+@@ -2228,6 +2236,8 @@ static int mdp3_continuous_splash_on(struct mdss_panel_data *pdata)
+ 
+ 	pr_debug("mdp3__continuous_splash_on\n");
+ 
++	frame_rate = mdss_panel_get_framerate(panel_info);
++
+ 	bus_handle = &mdp3_res->bus_handle[MDP3_BUS_HANDLE];
+ 	if (bus_handle->handle < 1) {
+ 		pr_err("invalid bus handle %d\n", bus_handle->handle);
+@@ -2239,8 +2249,14 @@ static int mdp3_continuous_splash_on(struct mdss_panel_data *pdata)
+ 			MDP3_CLIENT_DMA_P);
+ 	mdp3_clk_set_rate(MDP3_CLK_MDP_SRC, mdp_clk_rate,
+ 			MDP3_CLIENT_DMA_P);
+-
+-	rc = mdp3_bus_scale_set_quota(MDP3_CLIENT_DMA_P, ab, ib);
++	ab *= frame_rate;
++	ib = ab;
++	//rc = mdp3_bus_scale_set_quota(MDP3_CLIENT_DMA_P, ab, ib);
++	/* DMA not used on SPI interface, remove DMA bus voting  */
++	if (panel_info->type == SPI_PANEL)
++		rc = mdp3_bus_scale_set_quota(MDP3_CLIENT_DMA_P, 0, 0);
++	else
++		rc = mdp3_bus_scale_set_quota(MDP3_CLIENT_DMA_P, ab, ib);
+ 	bus_handle->restore_ab[MDP3_CLIENT_DMA_P] = ab;
+ 	bus_handle->restore_ib[MDP3_CLIENT_DMA_P] = ib;
+ 
+@@ -2258,6 +2274,8 @@ static int mdp3_continuous_splash_on(struct mdss_panel_data *pdata)
+ 
+ 	if (panel_info->type == MIPI_VIDEO_PANEL)
+ 		mdp3_res->intf[MDP3_DMA_OUTPUT_SEL_DSI_VIDEO].active = 1;
++	else if (panel_info->type == SPI_PANEL)
++		mdp3_res->intf[MDP3_DMA_OUTPUT_SEL_SPI_CMD].active = 1;
+ 	else
+ 		mdp3_res->intf[MDP3_DMA_OUTPUT_SEL_DSI_CMD].active = 1;
+ 
+diff --git a/drivers/video/msm/mdss/mdp3.h b/drivers/video/msm/mdss/mdp3.h
+index db7d3e1..3d8150f 100644
+--- a/drivers/video/msm/mdss/mdp3.h
++++ b/drivers/video/msm/mdss/mdp3.h
+@@ -78,6 +78,7 @@ enum {
+ 	MDP3_CLIENT_DSI = 1,
+ 	MDP3_CLIENT_PPP,
+ 	MDP3_CLIENT_IOMMU,
++	MDP3_CLIENT_SPI,
+ 	MDP3_CLIENT_MAX,
+ };
+ 
+@@ -267,6 +268,7 @@ void mdp3_calc_dma_res(struct mdss_panel_info *panel_info, u64 *clk_rate,
+ 		u64 *ab, u64 *ib, uint32_t bpp);
+ void mdp3_clear_irq(u32 interrupt_mask);
+ int mdp3_enable_panic_ctrl(void);
++int mdp3_ion_map_addr(struct msmfb_data *img, struct mdp3_img_data *data);
+ 
+ #define MDP3_REG_WRITE(addr, val) writel_relaxed(val, mdp3_res->mdp_base + addr)
+ #define MDP3_REG_READ(addr) readl_relaxed(mdp3_res->mdp_base + addr)
+diff --git a/drivers/video/msm/mdss/mdp3_ctrl.c b/drivers/video/msm/mdss/mdp3_ctrl.c
+index 9517d82..d865a7b 100644
+--- a/drivers/video/msm/mdss/mdp3_ctrl.c
++++ b/drivers/video/msm/mdss/mdp3_ctrl.c
+@@ -27,6 +27,9 @@
+ #include "mdp3.h"
+ #include "mdp3_ppp.h"
+ #include "mdss_smmu.h"
++#include "mdss_spi_panel.h"
++#include "mdss_spi_client.h"
++//#include "test_g_color.h"
+ 
+ #define VSYNC_EXPIRE_TICK	4
+ 
+@@ -74,7 +77,7 @@ static void mdp3_bufq_init(struct mdp3_buffer_queue *bufq)
+ 	bufq->pop_idx = 0;
+ }
+ 
+-static void mdp3_bufq_deinit(struct mdp3_buffer_queue *bufq)
++static void mdp3_bufq_deinit(struct mdp3_buffer_queue *bufq, int client)
+ {
+ 	int count = bufq->count;
+ 
+@@ -84,13 +87,38 @@ static void mdp3_bufq_deinit(struct mdp3_buffer_queue *bufq)
+ 	while (count-- && (bufq->pop_idx >= 0)) {
+ 		struct mdp3_img_data *data = &bufq->img_data[bufq->pop_idx];
+ 		bufq->pop_idx = (bufq->pop_idx + 1) % MDP3_MAX_BUF_QUEUE;
+-		mdp3_put_img(data, MDP3_CLIENT_DMA_P);
++		//mdp3_put_img(data, MDP3_CLIENT_DMA_P);
++		mdp3_put_img(data, client);
+ 	}
+ 	bufq->count = 0;
+ 	bufq->push_idx = 0;
+ 	bufq->pop_idx = 0;
+ }
+ 
++int mdp3_ion_map_addr(struct msmfb_data *img, struct mdp3_img_data *data)
++{
++	void *vaddr;
++	struct ion_client *iclient = mdp3_res->ion_client;
++
++	data->srcp_ihdl = ion_import_dma_buf(iclient, img->memory_id);
++	if (IS_ERR_OR_NULL(data->srcp_ihdl)) {
++		pr_err("error on ion_import_fd\n");
++		data->srcp_ihdl = NULL;
++		return -EIO;
++	}
++
++	vaddr = ion_map_kernel(iclient, data->srcp_ihdl);
++	if (!vaddr) {
++		pr_err("framebuffer virtual address can't be got from dma region\n");
++		return -ENOMEM;
++	}
++	data->addr = (dma_addr_t) vaddr;
++	data->len -= img->offset;
++
++	//pr_err("%p:len 0x%lx,offset:%d\n",vaddr, data->len, img->offset);
++	return 0;
++}
++
+ static int mdp3_bufq_push(struct mdp3_buffer_queue *bufq,
+ 			struct mdp3_img_data *data)
+ {
+@@ -122,6 +150,17 @@ static int mdp3_bufq_count(struct mdp3_buffer_queue *bufq)
+ 	return bufq->count;
+ }
+ 
++static int mdp3_get_ion_client(struct msm_fb_data_type *mfd)
++{
++	int intf_type;
++	intf_type = mdp3_ctrl_get_intf_type(mfd);
++
++	if (intf_type == MDP3_DMA_OUTPUT_SEL_SPI_CMD)
++		return MDP3_CLIENT_SPI;
++	else
++		return MDP3_CLIENT_DMA_P;
++}
++
+ void mdp3_ctrl_notifier_register(struct mdp3_session_data *ses,
+ 	struct notifier_block *notifier)
+ {
+@@ -502,13 +541,30 @@ static int mdp3_ctrl_clk_enable(struct msm_fb_data_type *mfd, int enable)
+ static int mdp3_ctrl_res_req_bus(struct msm_fb_data_type *mfd, int status)
+ {
+ 	int rc = 0;
++	u32 vtotal = 0;
++	int frame_rate = DEFAULT_FRAME_RATE;
+ 
+ 	if (status) {
++		struct mdss_panel_info *panel_info = mfd->panel_info;
+ 		u64 ab = 0;
+ 		u64 ib = 0;
+ 		mdp3_calc_dma_res(mfd->panel_info, NULL, &ab, &ib,
+ 			ppp_bpp(mfd->fb_imgType));
+-		rc = mdp3_bus_scale_set_quota(MDP3_CLIENT_DMA_P, ab, ib);
++		frame_rate = mdss_panel_get_framerate(mfd->panel_info);
++		vtotal = panel_info->yres + panel_info->lcdc.v_back_porch +
++			panel_info->lcdc.v_front_porch +
++			panel_info->lcdc.v_pulse_width;
++		ab = panel_info->xres * vtotal * 4;
++		ab *= frame_rate;
++		ib = ab;
++		/* DMA not used on SPI interface, remove DMA bus voting  */
++		if (mdp3_ctrl_get_intf_type(mfd) ==
++						MDP3_DMA_OUTPUT_SEL_SPI_CMD) {
++			rc = mdp3_bus_scale_set_quota(MDP3_CLIENT_DMA_P, 0, 0);
++		} else{
++			rc = mdp3_bus_scale_set_quota(MDP3_CLIENT_DMA_P,
++								ab, ib);
++		}
+ 	} else {
+ 		rc = mdp3_bus_scale_set_quota(MDP3_CLIENT_DMA_P, 0, 0);
+ 	}
+@@ -555,6 +611,9 @@ static int mdp3_ctrl_get_intf_type(struct msm_fb_data_type *mfd)
+ 	case LCDC_PANEL:
+ 		type = MDP3_DMA_OUTPUT_SEL_LCDC;
+ 		break;
++	case SPI_PANEL:
++		type = MDP3_DMA_OUTPUT_SEL_SPI_CMD;
++		break;
+ 	default:
+ 		type = MDP3_DMA_OUTPUT_SEL_MAX;
+ 	}
+@@ -614,7 +673,8 @@ static int mdp3_ctrl_intf_init(struct msm_fb_data_type *mfd,
+ 
+ 	cfg.type = mdp3_ctrl_get_intf_type(mfd);
+ 	if (cfg.type == MDP3_DMA_OUTPUT_SEL_DSI_VIDEO ||
+-		cfg.type == MDP3_DMA_OUTPUT_SEL_LCDC) {
++		cfg.type == MDP3_DMA_OUTPUT_SEL_LCDC ||
++		cfg.type == MDP3_DMA_OUTPUT_SEL_SPI_CMD) {
+ 		video->hsync_period = hsync_period;
+ 		video->hsync_pulse_width = h_pulse_width;
+ 		video->vsync_period = vsync_period;
+@@ -662,7 +722,8 @@ static int mdp3_ctrl_dma_init(struct msm_fb_data_type *mfd,
+ 	struct fb_var_screeninfo *var;
+ 	struct mdp3_dma_output_config outputConfig;
+ 	struct mdp3_dma_source sourceConfig;
+-	int frame_rate = mfd->panel_info->mipi.frame_rate;
++	int frame_rate = DEFAULT_FRAME_RATE;
++	//int frame_rate = mfd->panel_info->mipi.frame_rate;
+ 	int vbp, vfp, vspw;
+ 	int vtotal, vporch;
+ 	struct mdp3_notification dma_done_callback;
+@@ -671,6 +732,7 @@ static int mdp3_ctrl_dma_init(struct msm_fb_data_type *mfd,
+ 
+ 	mdp3_session = (struct mdp3_session_data *)mfd->mdp.private1;
+ 
++	frame_rate = mdss_panel_get_framerate(panel_info);
+ 	vbp = panel_info->lcdc.v_back_porch;
+ 	vfp = panel_info->lcdc.v_front_porch;
+ 	vspw = panel_info->lcdc.v_pulse_width;
+@@ -711,7 +773,8 @@ static int mdp3_ctrl_dma_init(struct msm_fb_data_type *mfd,
+ 		sourceConfig.stride = fix->line_length;
+ 	}
+ 
+-	te.frame_rate = panel_info->mipi.frame_rate;
++	//te.frame_rate = panel_info->mipi.frame_rate;
++	te.frame_rate = frame_rate;
+ 	te.hw_vsync_mode = panel_info->mipi.hw_vsync_mode;
+ 	te.tear_check_en = panel_info->te.tear_check_en;
+ 	te.sync_cfg_height = panel_info->te.sync_cfg_height;
+@@ -900,6 +963,7 @@ end:
+ static int mdp3_ctrl_off(struct msm_fb_data_type *mfd)
+ {
+ 	int rc = 0;
++	int client;
+ 	bool intf_stopped = true;
+ 	struct mdp3_session_data *mdp3_session;
+ 	struct mdss_panel_data *panel;
+@@ -923,6 +987,7 @@ static int mdp3_ctrl_off(struct msm_fb_data_type *mfd)
+ 	MDSS_XLOG(XLOG_FUNC_ENTRY, __LINE__, mdss_fb_is_power_on_ulp(mfd),
+ 		mfd->panel_power_state);
+ 	panel = mdp3_session->panel;
++	client = mdp3_get_ion_client(mfd);
+ 	mutex_lock(&mdp3_session->lock);
+ 
+ 	pr_debug("Requested power state = %d\n", mfd->panel_power_state);
+@@ -1030,10 +1095,10 @@ static int mdp3_ctrl_off(struct msm_fb_data_type *mfd)
+ 				pr_err("%s: pm_runtime_put failed (rc %d)\n",
+ 					__func__, rc);
+ 		}
+-		mdp3_bufq_deinit(&mdp3_session->bufq_out);
++		mdp3_bufq_deinit(&mdp3_session->bufq_out, client);
+ 		if (mdp3_session->overlay.id != MSMFB_NEW_REQUEST) {
+ 			mdp3_session->overlay.id = MSMFB_NEW_REQUEST;
+-			mdp3_bufq_deinit(&mdp3_session->bufq_in);
++			mdp3_bufq_deinit(&mdp3_session->bufq_in, client);
+ 		}
+ 	}
+ 
+@@ -1085,6 +1150,10 @@ static int mdp3_ctrl_off(struct msm_fb_data_type *mfd)
+ 		mdp3_ctrl_clk_enable(mdp3_session->mfd, 0);
+ 	}
+ off_error:
++	if (mdp3_session->overlay.id != MSMFB_NEW_REQUEST) {
++		mdp3_session->overlay.id = MSMFB_NEW_REQUEST;
++		mdp3_bufq_deinit(&mdp3_session->bufq_in, client);
++	}
+ 	MDSS_XLOG(XLOG_FUNC_EXIT, __LINE__);
+ 	mutex_unlock(&mdp3_session->lock);
+ 	/* Release the last reference to the runtime device */
+@@ -1223,14 +1292,16 @@ static int mdp3_overlay_unset(struct msm_fb_data_type *mfd, int ndx)
+ 	struct fb_info *fbi = mfd->fbi;
+ 	struct fb_fix_screeninfo *fix;
+ 	int format;
++	int client;
+ 
+ 	fix = &fbi->fix;
+ 	format = mdp3_ctrl_get_source_format(mfd->fb_imgType);
+ 	mutex_lock(&mdp3_session->lock);
+ 
++	client = mdp3_get_ion_client(mfd);
+ 	if (mdp3_session->overlay.id == ndx && ndx == 1) {
+ 		mdp3_session->overlay.id = MSMFB_NEW_REQUEST;
+-		mdp3_bufq_deinit(&mdp3_session->bufq_in);
++		mdp3_bufq_deinit(&mdp3_session->bufq_in, client);
+ 	} else {
+ 		rc = -EINVAL;
+ 	}
+@@ -1249,6 +1320,9 @@ static int mdp3_overlay_queue_buffer(struct msm_fb_data_type *mfd,
+ 	struct msmfb_data *img = &req->data;
+ 	struct mdp3_img_data data;
+ 	struct mdp3_dma *dma = mdp3_session->dma;
++	int client;
++
++	client = mdp3_get_ion_client(mfd);
+ 
+ 	memset(&data, 0, sizeof(struct mdp3_img_data));
+ 	if (mfd->panel.type == MIPI_CMD_PANEL)
+@@ -1260,7 +1334,7 @@ static int mdp3_overlay_queue_buffer(struct msm_fb_data_type *mfd,
+ 			return rc;
+ 		}
+ 	}
+-	rc = mdp3_get_img(img, &data, MDP3_CLIENT_DMA_P);
++	rc = mdp3_get_img(img, &data, client);
+ 	if (rc) {
+ 		pr_err("fail to get overlay buffer\n");
+ 		goto err;
+@@ -1270,17 +1344,21 @@ static int mdp3_overlay_queue_buffer(struct msm_fb_data_type *mfd,
+ 		pr_err("buf size(0x%lx) is smaller than dma config(0x%x)\n",
+ 			data.len, (dma->source_config.stride *
+ 			dma->source_config.height));
+-		mdp3_put_img(&data, MDP3_CLIENT_DMA_P);
++		mdp3_put_img(&data, client);
+ 		rc = -EINVAL;
+ 		goto err;
+ 	}
++
++	mdp3_ion_map_addr(img,&data);
++
+ 	rc = mdp3_bufq_push(&mdp3_session->bufq_in, &data);
+ 	if (rc) {
+ 		pr_err("fail to queue the overlay buffer, buffer drop\n");
+-		mdp3_put_img(&data, MDP3_CLIENT_DMA_P);
++		mdp3_put_img(&data, client);
+ 		goto err;
+ 	}
+ 	rc = 0;
++
+ err:
+ 	if (is_panel_type_cmd)
+ 		mdp3_iommu_disable(MDP3_CLIENT_DMA_P);
+@@ -1336,8 +1414,11 @@ static int mdp3_ctrl_display_commit_kickoff(struct msm_fb_data_type *mfd,
+ 	struct mdp3_img_data *data;
+ 	struct mdss_panel_info *panel_info;
+ 	int rc = 0;
++	int client;
+ 	static bool splash_done;
+ 	struct mdss_panel_data *panel;
++	int frame_rate = DEFAULT_FRAME_RATE;
++	int stride;
+ 	int prev_bl;
+ 
+ 	if (!mfd || !mfd->mdp.private1)
+@@ -1348,6 +1429,9 @@ static int mdp3_ctrl_display_commit_kickoff(struct msm_fb_data_type *mfd,
+ 	if (!mdp3_session || !mdp3_session->dma)
+ 		return -EINVAL;
+ 
++	frame_rate = mdss_panel_get_framerate(panel_info);
++	client = mdp3_get_ion_client(mfd);
++
+ 	if (mdp3_bufq_count(&mdp3_session->bufq_in) == 0) {
+ 		pr_debug("no buffer in queue yet\n");
+ 		return -EPERM;
+@@ -1399,22 +1483,34 @@ static int mdp3_ctrl_display_commit_kickoff(struct msm_fb_data_type *mfd,
+ 	if (data) {
+ 		mdp3_ctrl_reset_countdown(mdp3_session, mfd);
+ 		mdp3_ctrl_clk_enable(mfd, 1);
+-		if (mdp3_session->dma->update_src_cfg &&
+-				panel_info->partial_update_enabled) {
+-			panel->panel_info.roi.x = mdp3_session->dma->roi.x;
+-			panel->panel_info.roi.y = mdp3_session->dma->roi.y;
+-			panel->panel_info.roi.w = mdp3_session->dma->roi.w;
+-			panel->panel_info.roi.h = mdp3_session->dma->roi.h;
+-			rc = mdp3_session->dma->update(mdp3_session->dma,
++		stride = mdp3_session->dma->source_config.stride;
++		if (mdp3_ctrl_get_intf_type(mfd) ==
++				MDP3_DMA_OUTPUT_SEL_SPI_CMD) {
++			rc = mdss_spi_panel_kickoff(mdp3_session->panel,
+ 					(void *)(int)data->addr,
+-					mdp3_session->intf,
+-					mdp3_session->first_commit,
+-					(void *)panel);
++				//	&g_color_img[0],
++					(int)data->len,
++				//	240*204*2,
++					stride);
++			//pr_err("%p:0x%lx\n",(void *)(int)data->addr, data->len);
+ 		} else {
+-			rc = mdp3_session->dma->update(mdp3_session->dma,
+-					(void *)(int)data->addr,
+-					mdp3_session->intf,
+-					mdp3_session->first_commit, NULL);
++			if (mdp3_session->dma->update_src_cfg &&
++					panel_info->partial_update_enabled) {
++				panel->panel_info.roi.x = mdp3_session->dma->roi.x;
++				panel->panel_info.roi.y = mdp3_session->dma->roi.y;
++				panel->panel_info.roi.w = mdp3_session->dma->roi.w;
++				panel->panel_info.roi.h = mdp3_session->dma->roi.h;
++				rc = mdp3_session->dma->update(mdp3_session->dma,
++						(void *)(int)data->addr,
++						mdp3_session->intf,
++						mdp3_session->first_commit,
++						(void *)panel);
++			} else {
++				rc = mdp3_session->dma->update(mdp3_session->dma,
++						(void *)(int)data->addr,
++						mdp3_session->intf,
++						mdp3_session->first_commit, NULL);
++			}
+ 		}
+ 		/* This is for the previous frame */
+ 		if (rc < 0) {
+@@ -1422,7 +1518,9 @@ static int mdp3_ctrl_display_commit_kickoff(struct msm_fb_data_type *mfd,
+ 				MDP_NOTIFY_FRAME_TIMEOUT);
+ 		} else {
+ 			if (mdp3_ctrl_get_intf_type(mfd) ==
+-						MDP3_DMA_OUTPUT_SEL_DSI_VIDEO) {
++						MDP3_DMA_OUTPUT_SEL_DSI_VIDEO ||
++				mdp3_ctrl_get_intf_type(mfd) ==
++					MDP3_DMA_OUTPUT_SEL_SPI_CMD)  {
+ 				mdp3_ctrl_notify(mdp3_session,
+ 					MDP_NOTIFY_FRAME_DONE);
+ 				mdp3_ctrl_notify(mdp3_session,
+@@ -1439,7 +1537,7 @@ static int mdp3_ctrl_display_commit_kickoff(struct msm_fb_data_type *mfd,
+ 		mdp3_release_splash_memory(mfd);
+ 		data = mdp3_bufq_pop(&mdp3_session->bufq_out);
+ 		if (data)
+-			mdp3_put_img(data, MDP3_CLIENT_DMA_P);
++			mdp3_put_img(data, client);
+ 	}
+ 
+ 	if (mdp3_session->first_commit) {
+@@ -1447,7 +1545,7 @@ static int mdp3_ctrl_display_commit_kickoff(struct msm_fb_data_type *mfd,
+ 		rc = mdp3_wait_for_dma_done(mdp3_session);
+ 
+ 		if(rc)
+-			msleep((1000 / panel_info->mipi.frame_rate) + 1);
++			msleep((1000 / frame_rate) + 1);
+ 
+ 		mdp3_session->first_commit = false;
+ 		if (panel)
+@@ -1516,6 +1614,7 @@ static void mdp3_ctrl_pan_display(struct msm_fb_data_type *mfd)
+ 	struct mdss_panel_info *panel_info;
+ 	static bool splash_done;
+ 	struct mdss_panel_data *panel;
++	int frame_rate = DEFAULT_FRAME_RATE;
+ 
+ 	int rc;
+ 
+@@ -1528,6 +1627,8 @@ static void mdp3_ctrl_pan_display(struct msm_fb_data_type *mfd)
+ 	if (!mdp3_session || !mdp3_session->dma)
+ 		return;
+ 
++	frame_rate = mdss_panel_get_framerate(panel_info);
++
+ 	mutex_lock(&mdp3_res->fs_idle_pc_lock);
+ 	if (mdp3_session->in_splash_screen ||
+ 		mdp3_res->idle_pc) {
+@@ -1597,14 +1698,16 @@ static void mdp3_ctrl_pan_display(struct msm_fb_data_type *mfd)
+ 	}
+ 
+ 	panel = mdp3_session->panel;
+-	if (mdp3_session->first_commit) {
+-		/*wait to ensure frame is sent to panel*/
+-		if (panel_info->mipi.init_delay)
+-			msleep(((1000 / panel_info->mipi.frame_rate) + 1) *
+-					panel_info->mipi.init_delay);
++	if (mdp3_ctrl_get_intf_type(mfd) != MDP3_DMA_OUTPUT_SEL_SPI_CMD) {
++		if (mdp3_session->first_commit) {
++			/*wait to ensure frame is sent to panel*/
++			if (panel_info->mipi.init_delay)
++				msleep(((1000 / frame_rate) + 1) *
++						panel_info->mipi.init_delay);
+ 		else
+-			msleep(1000 / panel_info->mipi.frame_rate);
++			msleep(1000 / frame_rate);
+ 		mdp3_session->first_commit = false;
++		}
+ 		if (panel)
+ 			panel->event_handler(panel, MDSS_EVENT_POST_PANEL_ON,
+ 					NULL);
+@@ -1656,7 +1759,7 @@ static int mdp3_get_metadata(struct msm_fb_data_type *mfd,
+ 	switch (metadata->op) {
+ 	case metadata_op_frame_rate:
+ 		metadata->data.panel_frame_rate =
+-			mfd->panel_info->mipi.frame_rate;
++			mdss_panel_get_framerate(mfd->panel_info);
+ 		break;
+ 	case metadata_op_get_caps:
+ 		metadata->data.caps.mdp_rev = 305;
+@@ -2751,6 +2854,7 @@ int mdp3_ctrl_init(struct msm_fb_data_type *mfd)
+ 	struct msm_mdp_interface *mdp3_interface = &mfd->mdp;
+ 	struct mdp3_session_data *mdp3_session = NULL;
+ 	u32 intf_type = MDP3_DMA_OUTPUT_SEL_DSI_VIDEO;
++	int frame_rate = DEFAULT_FRAME_RATE;
+ 	int rc;
+ 	int splash_mismatch = 0;
+ 	struct sched_param sched = { .sched_priority = 16 };
+@@ -2760,6 +2864,8 @@ int mdp3_ctrl_init(struct msm_fb_data_type *mfd)
+ 	if (rc)
+ 		splash_mismatch = 1;
+ 
++	frame_rate = mdss_panel_get_framerate(mfd->panel_info);
++
+ 	mdp3_interface->on_fnc = mdp3_ctrl_on;
+ 	mdp3_interface->off_fnc = mdp3_ctrl_off;
+ 	mdp3_interface->do_histogram = NULL;
+@@ -2832,11 +2938,12 @@ int mdp3_ctrl_init(struct msm_fb_data_type *mfd)
+ 	init_timer(&mdp3_session->vsync_timer);
+ 	mdp3_session->vsync_timer.function = mdp3_vsync_timer_func;
+ 	mdp3_session->vsync_timer.data = (u32)mdp3_session;
+-	mdp3_session->vsync_period = 1000 / mfd->panel_info->mipi.frame_rate;
++	mdp3_session->vsync_period = 1000 / frame_rate;
+ 	mfd->mdp.private1 = mdp3_session;
+ 	mfd->wait_for_kickoff = true;
+ 	init_completion(&mdp3_session->dma_completion);
+-	if (intf_type != MDP3_DMA_OUTPUT_SEL_DSI_VIDEO)
++	if (intf_type != MDP3_DMA_OUTPUT_SEL_DSI_VIDEO ||
++		intf_type != MDP3_DMA_OUTPUT_SEL_SPI_CMD)
+ 		mdp3_session->wait_for_dma_done = mdp3_wait_for_dma_done;
+ 
+ 	rc = sysfs_create_group(&dev->kobj, &vsync_fs_attr_group);
+diff --git a/drivers/video/msm/mdss/mdp3_dma.c b/drivers/video/msm/mdss/mdp3_dma.c
+index b6f1923..34d4a69 100644
+--- a/drivers/video/msm/mdss/mdp3_dma.c
++++ b/drivers/video/msm/mdss/mdp3_dma.c
+@@ -1,4 +1,4 @@
+-/* Copyright (c) 2013-2014, 2016, The Linux Foundation. All rights reserved.
++/* Copyright (c) 2013-2014, 2016-2017, The Linux Foundation. All rights reserved.
+  *
+  * This program is free software; you can redistribute it and/or modify
+  * it under the terms of the GNU General Public License version 2 and
+@@ -109,7 +109,8 @@ void mdp3_dma_callback_enable(struct mdp3_dma *dma, int type)
+ 	}
+ 
+ 	if (dma->output_config.out_sel == MDP3_DMA_OUTPUT_SEL_DSI_VIDEO ||
+-		dma->output_config.out_sel == MDP3_DMA_OUTPUT_SEL_LCDC) {
++		dma->output_config.out_sel == MDP3_DMA_OUTPUT_SEL_LCDC  ||
++		dma->output_config.out_sel == MDP3_DMA_OUTPUT_SEL_SPI_CMD) {
+ 		if (type & MDP3_DMA_CALLBACK_TYPE_VSYNC)
+ 			mdp3_irq_enable(MDP3_INTR_LCDC_START_OF_FRAME);
+ 	} else if (dma->output_config.out_sel == MDP3_DMA_OUTPUT_SEL_DSI_CMD) {
+@@ -193,7 +194,8 @@ static int mdp3_dma_callback_setup(struct mdp3_dma *dma)
+ 		rc = mdp3_set_intr_callback(MDP3_INTR_DMA_P_HISTO, &hist_cb);
+ 
+ 	if (dma->output_config.out_sel == MDP3_DMA_OUTPUT_SEL_DSI_VIDEO ||
+-		dma->output_config.out_sel == MDP3_DMA_OUTPUT_SEL_LCDC)
++		dma->output_config.out_sel == MDP3_DMA_OUTPUT_SEL_LCDC  ||
++		dma->output_config.out_sel == MDP3_DMA_OUTPUT_SEL_SPI_CMD)
+ 		rc |= mdp3_set_intr_callback(MDP3_INTR_LCDC_START_OF_FRAME,
+ 					&vsync_cb);
+ 	else if (dma->output_config.out_sel == MDP3_DMA_OUTPUT_SEL_DSI_CMD) {
+@@ -1259,6 +1261,23 @@ int dsi_cmd_stop(struct mdp3_intf *intf)
+ 	return 0;
+ }
+ 
++int spi_cmd_config(struct mdp3_intf *intf, struct mdp3_intf_cfg *cfg)
++{
++	return 0;
++}
++
++int spi_cmd_start(struct mdp3_intf *intf)
++{
++	intf->active = true;
++	return 0;
++}
++
++int spi_cmd_stop(struct mdp3_intf *intf)
++{
++	intf->active = false;
++	return 0;
++}
++
+ int mdp3_intf_init(struct mdp3_intf *intf)
+ {
+ 	switch (intf->cfg.type) {
+@@ -1277,6 +1296,11 @@ int mdp3_intf_init(struct mdp3_intf *intf)
+ 		intf->start = dsi_cmd_start;
+ 		intf->stop = dsi_cmd_stop;
+ 		break;
++	case MDP3_DMA_OUTPUT_SEL_SPI_CMD:
++		intf->config = spi_cmd_config;
++		intf->start = spi_cmd_start;
++		intf->stop = spi_cmd_stop;
++		break;
+ 
+ 	default:
+ 		return -EINVAL;
+diff --git a/drivers/video/msm/mdss/mdp3_dma.h b/drivers/video/msm/mdss/mdp3_dma.h
+index e84c0b7..7a2d90f 100644
+--- a/drivers/video/msm/mdss/mdp3_dma.h
++++ b/drivers/video/msm/mdss/mdp3_dma.h
+@@ -1,4 +1,4 @@
+-/* Copyright (c) 2013-2014, 2016, The Linux Foundation. All rights reserved.
++/* Copyright (c) 2013-2014, 2016-2017, The Linux Foundation. All rights reserved.
+  *
+  * This program is free software; you can redistribute it and/or modify
+  * it under the terms of the GNU General Public License version 2 and
+@@ -48,6 +48,7 @@ enum {
+ 	MDP3_DMA_OUTPUT_SEL_DSI_CMD,
+ 	MDP3_DMA_OUTPUT_SEL_LCDC,
+ 	MDP3_DMA_OUTPUT_SEL_DSI_VIDEO,
++	MDP3_DMA_OUTPUT_SEL_SPI_CMD,
+ 	MDP3_DMA_OUTPUT_SEL_MAX
+ };
+ 
+diff --git a/drivers/video/msm/mdss/mdp3_ppp.c b/drivers/video/msm/mdss/mdp3_ppp.c
+index a4e93f8..38ba17e 100644
+--- a/drivers/video/msm/mdss/mdp3_ppp.c
++++ b/drivers/video/msm/mdss/mdp3_ppp.c
+@@ -529,6 +529,7 @@ int mdp3_calc_ppp_res(struct msm_fb_data_type *mfd,
+ 		struct blit_req_list *lreq)
+ {
+ 	struct mdss_panel_info *panel_info = mfd->panel_info;
++	int frame_rate = DEFAULT_FRAME_RATE;
+ 	int i, lcount = 0;
+ 	struct mdp_blit_req *req;
+ 	struct bpp_info bpp;
+@@ -544,6 +545,7 @@ int mdp3_calc_ppp_res(struct msm_fb_data_type *mfd,
+ 
+ 	ATRACE_BEGIN(__func__);
+ 	lcount = lreq->count;
++	frame_rate = mdss_panel_get_framerate(panel_info);
+ 	if (lcount == 0) {
+ 		pr_err("Blit with request count 0, continue to recover!!!\n");
+ 		ATRACE_END(__func__);
+@@ -571,11 +573,13 @@ int mdp3_calc_ppp_res(struct msm_fb_data_type *mfd,
+ 		is_blit_optimization_possible(lreq, i);
+ 		req = &(lreq->req_list[i]);
+ 
+-		if (req->fps > 0 && req->fps <= panel_info->mipi.frame_rate) {
++		//if (req->fps > 0 && req->fps <= panel_info->mipi.frame_rate) {
++		if (req->fps > 0 && req->fps <= frame_rate) {
+ 			if (fps == 0)
+ 				fps = req->fps;
+ 			else
+-				fps = panel_info->mipi.frame_rate;
++				//fps = panel_info->mipi.frame_rate;
++				fps = frame_rate;
+ 		}
+ 
+ 		mdp3_get_bpp_info(req->src.format, &bpp);
+@@ -633,7 +637,8 @@ int mdp3_calc_ppp_res(struct msm_fb_data_type *mfd,
+ 	}
+ 
+ 	if (fps == 0)
+-		fps = panel_info->mipi.frame_rate;
++		//fps = panel_info->mipi.frame_rate;
++		fps = frame_rate;
+ 
+ 	if (lreq->req_list[0].flags & MDP_SOLID_FILL) {
+ 		honest_ppp_ab = ppp_res.solid_fill_byte * 4;
+diff --git a/drivers/video/msm/mdss/mdss_dsi.c b/drivers/video/msm/mdss/mdss_dsi.c
+index eddf15c..12926aa 100644
+--- a/drivers/video/msm/mdss/mdss_dsi.c
++++ b/drivers/video/msm/mdss/mdss_dsi.c
+@@ -3616,6 +3616,14 @@ static int mdss_dsi_probe(struct platform_device *pdev)
+ 		panel_cfg = pan_cfg->arg_cfg;
+ 	}
+ 
++	pan_cfg = util->panel_intf_type(MDSS_PANEL_INTF_SPI);
++	if (IS_ERR(pan_cfg)) {
++		return PTR_ERR(pan_cfg);
++	} else if (pan_cfg) {
++		pr_debug("%s: SPI is primary\n", __func__);
++		return -ENODEV;
++	}
++
+ 	rc = mdss_dsi_res_init(pdev);
+ 	if (rc) {
+ 		pr_err("%s Unable to set dsi res\n", __func__);
+diff --git a/drivers/video/msm/mdss/mdss_fb.c b/drivers/video/msm/mdss/mdss_fb.c
+index 727751d..9da68e0 100644
+--- a/drivers/video/msm/mdss/mdss_fb.c
++++ b/drivers/video/msm/mdss/mdss_fb.c
+@@ -1089,7 +1089,7 @@ static int mdss_fb_probe(struct platform_device *pdev)
+ 	mfd->bl_scale = 1024;
+ 	mfd->bl_min_lvl = 30;
+ 	mfd->ad_bl_level = 0;
+-	mfd->fb_imgType = MDP_RGBA_8888;
++	mfd->fb_imgType = MDP_RGB_565;
+ 	mfd->calib_mode_bl = 0;
+ 
+ 	mfd->pdev = pdev;
+diff --git a/drivers/video/msm/mdss/mdss_panel.h b/drivers/video/msm/mdss/mdss_panel.h
+index 2801a62..43d8465 100644
+--- a/drivers/video/msm/mdss/mdss_panel.h
++++ b/drivers/video/msm/mdss/mdss_panel.h
+@@ -52,6 +52,7 @@ struct panel_id {
+ #define WRITEBACK_PANEL		10	/* Wifi display */
+ #define LVDS_PANEL		11	/* LVDS */
+ #define EDP_PANEL		12	/* LVDS */
++#define SPI_PANEL		13	/* SPI */
+ 
+ #define DSC_PPS_LEN		128
+ 
+@@ -97,6 +98,7 @@ enum {
+ 	MDSS_PANEL_INTF_DSI,
+ 	MDSS_PANEL_INTF_EDP,
+ 	MDSS_PANEL_INTF_HDMI,
++	MDSS_PANEL_INTF_SPI,
+ };
+ 
+ enum {
+@@ -406,6 +408,10 @@ struct edp_panel_info {
+ 	char frame_rate;	/* fps */
+ };
+ 
++struct spi_panel_info {
++	char frame_rate;	/* fps */
++};
++
+ enum dynamic_fps_update {
+ 	DFPS_SUSPEND_RESUME_MODE,
+ 	DFPS_IMMEDIATE_CLK_UPDATE_MODE,
+@@ -653,6 +659,7 @@ struct mdss_panel_info {
+ 	struct lcd_panel_info lcdc;
+ 	struct fbc_panel_info fbc;
+ 	struct mipi_panel_info mipi;
++	struct spi_panel_info spi;
+ 	struct lvds_panel_info lvds;
+ 	struct edp_panel_info edp;
+ 
+@@ -771,6 +778,9 @@ static inline u32 mdss_panel_get_framerate(struct mdss_panel_info *panel_info)
+ 	case WRITEBACK_PANEL:
+ 		frame_rate = DEFAULT_FRAME_RATE;
+ 		break;
++	case SPI_PANEL:
++		frame_rate = panel_info->spi.frame_rate;
++		break;
+ 	default:
+ 		pixel_total = (panel_info->lcdc.h_back_porch +
+ 			  panel_info->lcdc.h_front_porch +
+diff --git a/drivers/video/msm/mdss/mdss_spi_panel.c b/drivers/video/msm/mdss/mdss_spi_panel.c
+new file mode 100644
+index 0000000..7e2ceb3
+--- /dev/null
++++ b/drivers/video/msm/mdss/mdss_spi_panel.c
+@@ -0,0 +1,1412 @@
++/* Copyright (c) 2017, The Linux Foundation. All rights reserved.
++ *
++ * This program is free software; you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License version 2 and
++ * only version 2 as published by the Free Software Foundation.
++ *
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details.
++ */
++
++#include <linux/module.h>
++#include <linux/of_gpio.h>
++#include <linux/gpio.h>
++#include <linux/qpnp/pin.h>
++#include <linux/delay.h>
++#include <linux/interrupt.h>
++#include <linux/leds.h>
++#include <linux/qpnp/pwm.h>
++#include <linux/of_device.h>
++
++#include "mdss.h"
++#include "mdss_panel.h"
++#include "mdss_spi_panel.h"
++#include "mdss_spi_client.h"
++
++DEFINE_LED_TRIGGER(bl_led_trigger);
++int mdss_spi_panel_reset(struct mdss_panel_data *pdata, int enable)
++{
++	struct spi_panel_data *ctrl_pdata = NULL;
++	struct mdss_panel_info *pinfo = NULL;
++	int i, rc = 0;
++
++	if (pdata == NULL) {
++		pr_err("%s: Invalid input data\n", __func__);
++		return -EINVAL;
++	}
++
++	ctrl_pdata = container_of(pdata, struct spi_panel_data,
++				panel_data);
++
++	if (!gpio_is_valid(ctrl_pdata->rst_gpio)) {
++		pr_debug("%s:%d, reset line not configured\n",
++			   __func__, __LINE__);
++		return rc;
++	}
++
++	pr_debug("%s: enable = %d\n", __func__, enable);
++	pinfo = &(ctrl_pdata->panel_data.panel_info);
++
++	if (enable) {
++		rc = gpio_request(ctrl_pdata->rst_gpio, "disp_rst_n");
++		if (rc) {
++			pr_err("gpio request failed\n");
++			return rc;
++		}
++		if (!pinfo->cont_splash_enabled) {
++			for (i = 0; i < pdata->panel_info.rst_seq_len; ++i) {
++				gpio_set_value((ctrl_pdata->rst_gpio),
++					pdata->panel_info.rst_seq[i]);
++				if (pdata->panel_info.rst_seq[++i])
++					usleep_range(pinfo->rst_seq[i] * 1000, pinfo->rst_seq[i] * 1000);
++			}
++		}
++
++		if (ctrl_pdata->ctrl_state & CTRL_STATE_PANEL_INIT) {
++			pr_debug("%s: Panel Not properly turned OFF\n",
++						__func__);
++			ctrl_pdata->ctrl_state &= ~CTRL_STATE_PANEL_INIT;
++			pr_err("%s: Reset panel done\n", __func__);
++		}
++	} else {
++		gpio_set_value((ctrl_pdata->rst_gpio), 0);
++		gpio_free(ctrl_pdata->rst_gpio);
++	}
++	return rc;
++}
++
++
++static int mdss_spi_panel_pinctrl_set_state(
++	struct spi_panel_data *ctrl_pdata,
++	bool active)
++{
++	struct pinctrl_state *pin_state;
++	int rc = -EFAULT;
++
++	if (IS_ERR_OR_NULL(ctrl_pdata->pin_res.pinctrl))
++		return PTR_ERR(ctrl_pdata->pin_res.pinctrl);
++
++	pin_state = active ? ctrl_pdata->pin_res.gpio_state_active
++				: ctrl_pdata->pin_res.gpio_state_suspend;
++	if (!IS_ERR_OR_NULL(pin_state)) {
++		rc = pinctrl_select_state(ctrl_pdata->pin_res.pinctrl,
++				pin_state);
++		if (rc)
++			pr_err("%s: can not set %s pins\n", __func__,
++			       active ? MDSS_PINCTRL_STATE_DEFAULT
++			       : MDSS_PINCTRL_STATE_SLEEP);
++	} else {
++		pr_err("%s: invalid '%s' pinstate\n", __func__,
++		       active ? MDSS_PINCTRL_STATE_DEFAULT
++		       : MDSS_PINCTRL_STATE_SLEEP);
++	}
++	return rc;
++}
++
++
++static int mdss_spi_panel_pinctrl_init(struct platform_device *pdev)
++{
++	struct spi_panel_data *ctrl_pdata;
++
++	ctrl_pdata = platform_get_drvdata(pdev);
++	ctrl_pdata->pin_res.pinctrl = devm_pinctrl_get(&pdev->dev);
++	if (IS_ERR_OR_NULL(ctrl_pdata->pin_res.pinctrl)) {
++		pr_err("%s: failed to get pinctrl\n", __func__);
++		return PTR_ERR(ctrl_pdata->pin_res.pinctrl);
++	}
++
++	ctrl_pdata->pin_res.gpio_state_active
++		= pinctrl_lookup_state(ctrl_pdata->pin_res.pinctrl,
++				MDSS_PINCTRL_STATE_DEFAULT);
++	if (IS_ERR_OR_NULL(ctrl_pdata->pin_res.gpio_state_active))
++		pr_warn("%s: can not get default pinstate\n", __func__);
++
++	ctrl_pdata->pin_res.gpio_state_suspend
++		= pinctrl_lookup_state(ctrl_pdata->pin_res.pinctrl,
++				MDSS_PINCTRL_STATE_SLEEP);
++	if (IS_ERR_OR_NULL(ctrl_pdata->pin_res.gpio_state_suspend))
++		pr_warn("%s: can not get sleep pinstate\n", __func__);
++
++	return 0;
++}
++
++
++static int mdss_spi_panel_power_on(struct mdss_panel_data *pdata)
++{
++	int ret = 0;
++	struct spi_panel_data *ctrl_pdata = NULL;
++
++	if (pdata == NULL) {
++		pr_err("%s: Invalid input data\n", __func__);
++		return -EINVAL;
++	}
++
++	ctrl_pdata = container_of(pdata, struct spi_panel_data,
++				panel_data);
++	ret = msm_dss_enable_vreg(
++		ctrl_pdata->panel_power_data.vreg_config,
++		ctrl_pdata->panel_power_data.num_vreg, 1);
++	if (ret) {
++		pr_err("%s: failed to enable vregs for %s\n",
++			__func__, "PANEL_PM");
++	}
++
++	/*
++	 * If continuous splash screen feature is enabled, then we need to
++	 * request all the GPIOs that have already been configured in the
++	 * bootloader. This needs to be done irresepective of whether
++	 * the lp11_init flag is set or not.
++	 */
++	if (pdata->panel_info.cont_splash_enabled) {
++		if (mdss_spi_panel_pinctrl_set_state(ctrl_pdata, true))
++			pr_debug("reset enable: pinctrl not enabled\n");
++
++		ret = mdss_spi_panel_reset(pdata, 1);
++		if (ret)
++			pr_err("%s: Panel reset failed. rc=%d\n",
++					__func__, ret);
++	}
++
++	return ret;
++}
++
++
++static int mdss_spi_panel_power_off(struct mdss_panel_data *pdata)
++{
++	int ret = 0;
++	struct spi_panel_data *ctrl_pdata = NULL;
++
++	if (pdata == NULL) {
++		pr_err("%s: Invalid input data\n", __func__);
++		ret = -EINVAL;
++		goto end;
++	}
++	ctrl_pdata = container_of(pdata, struct spi_panel_data,
++				panel_data);
++
++	ret = mdss_spi_panel_reset(pdata, 0);
++	if (ret) {
++		pr_warn("%s: Panel reset failed. rc=%d\n", __func__, ret);
++		ret = 0;
++	}
++
++	if (mdss_spi_panel_pinctrl_set_state(ctrl_pdata, false))
++		pr_warn("reset disable: pinctrl not enabled\n");
++
++	ret = msm_dss_enable_vreg(
++		ctrl_pdata->panel_power_data.vreg_config,
++		ctrl_pdata->panel_power_data.num_vreg, 0);
++	if (ret)
++		pr_err("%s: failed to disable vregs for %s\n",
++			__func__, "PANEL_PM");
++
++end:
++	return ret;
++}
++
++
++static int mdss_spi_panel_power_ctrl(struct mdss_panel_data *pdata,
++	int power_state)
++{
++	int ret;
++	struct mdss_panel_info *pinfo;
++
++	if (pdata == NULL) {
++		pr_err("%s: Invalid input data\n", __func__);
++		return -EINVAL;
++	}
++
++	pinfo = &pdata->panel_info;
++	pr_debug("%s: cur_power_state=%d req_power_state=%d\n", __func__,
++		pinfo->panel_power_state, power_state);
++
++	if (pinfo->panel_power_state == power_state) {
++		pr_debug("%s: no change needed\n", __func__);
++		return 0;
++	}
++
++	switch (power_state) {
++	case MDSS_PANEL_POWER_OFF:
++		ret = mdss_spi_panel_power_off(pdata);
++		break;
++	case MDSS_PANEL_POWER_ON:
++		ret = mdss_spi_panel_power_on(pdata);
++		break;
++	default:
++		pr_err("%s: unknown panel power state requested (%d)\n",
++			__func__, power_state);
++		ret = -EINVAL;
++	}
++
++	if (!ret)
++		pinfo->panel_power_state = power_state;
++
++	return ret;
++}
++
++static int mdss_spi_panel_unblank(struct mdss_panel_data *pdata)
++{
++	int ret = 0;
++	struct spi_panel_data *ctrl_pdata = NULL;
++
++	if (pdata == NULL) {
++		pr_err("%s: Invalid input data\n", __func__);
++		return -EINVAL;
++	}
++
++	ctrl_pdata = container_of(pdata, struct spi_panel_data,
++				panel_data);
++
++	if (!(ctrl_pdata->ctrl_state & CTRL_STATE_PANEL_INIT)) {
++			ret = ctrl_pdata->on(pdata);
++			if (ret) {
++				pr_err("%s: unable to initialize the panel\n",
++							__func__);
++				return ret;
++		}
++		ctrl_pdata->ctrl_state |= CTRL_STATE_PANEL_INIT;
++	}
++
++	return ret;
++}
++
++static int mdss_spi_panel_blank(struct mdss_panel_data *pdata, int power_state)
++{
++	int ret = 0;
++	struct spi_panel_data *ctrl_pdata = NULL;
++
++	if (pdata == NULL) {
++		pr_err("%s: Invalid input data\n", __func__);
++		return -EINVAL;
++	}
++
++	ctrl_pdata = container_of(pdata, struct spi_panel_data,
++				panel_data);
++
++	if (ctrl_pdata->ctrl_state & CTRL_STATE_PANEL_INIT) {
++			ret = ctrl_pdata->off(pdata);
++			if (ret) {
++				pr_err("%s: Panel OFF failed\n", __func__);
++				return ret;
++			}
++		ctrl_pdata->ctrl_state &= ~CTRL_STATE_PANEL_INIT;
++	}
++
++	return ret;
++}
++
++
++static int mdss_spi_panel_event_handler(struct mdss_panel_data *pdata,
++				  int event, void *arg)
++{
++	int rc = 0;
++	struct spi_panel_data *ctrl_pdata = NULL;
++	int power_state;
++
++	if (pdata == NULL) {
++		pr_err("%s: Invalid input data\n", __func__);
++		return -EINVAL;
++	}
++	ctrl_pdata = container_of(pdata, struct spi_panel_data,
++				panel_data);
++
++	switch (event) {
++	case MDSS_EVENT_LINK_READY:
++		rc = mdss_spi_panel_power_ctrl(pdata, MDSS_PANEL_POWER_ON);
++		if (rc) {
++			pr_err("%s:Panel power on failed. rc=%d\n",
++							__func__, rc);
++			return rc;
++		}
++		mdss_spi_panel_pinctrl_set_state(ctrl_pdata, true);
++		mdss_spi_panel_reset(pdata, 1);
++		break;
++	case MDSS_EVENT_UNBLANK:
++		rc = mdss_spi_panel_unblank(pdata);
++		break;
++	case MDSS_EVENT_PANEL_ON:
++		ctrl_pdata->ctrl_state |= CTRL_STATE_MDP_ACTIVE;
++		break;
++	case MDSS_EVENT_BLANK:
++		power_state = (int) (unsigned long) arg;
++		break;
++	case MDSS_EVENT_PANEL_OFF:
++		power_state = (int) (unsigned long) arg;
++		ctrl_pdata->ctrl_state &= ~CTRL_STATE_MDP_ACTIVE;
++		rc = mdss_spi_panel_blank(pdata, power_state);
++		rc = mdss_spi_panel_power_ctrl(pdata, power_state);
++		break;
++	default:
++		pr_debug("%s: unhandled event=%d\n", __func__, event);
++		break;
++	}
++	pr_debug("%s-:event=%d, rc=%d\n", __func__, event, rc);
++	return rc;
++}
++
++int mdss_spi_panel_kickoff(struct mdss_panel_data *pdata,
++			char *buf, int len, int dma_stride)
++{
++	struct spi_panel_data *ctrl_pdata = NULL;
++	char *tx_buf;
++	int rc = 0;
++	int panel_yres;
++	int panel_xres;
++	int padding_length = 0;
++	int actual_stride = 0;
++	int byte_per_pixel = 0;
++	int scan_count = 0;
++
++	if (pdata == NULL) {
++		pr_err("%s: Invalid input data\n", __func__);
++		return -EINVAL;
++	}
++
++	ctrl_pdata = container_of(pdata, struct spi_panel_data,
++				panel_data);
++
++	tx_buf = ctrl_pdata->tx_buf;
++	panel_xres = ctrl_pdata->panel_data.panel_info.xres;
++	panel_yres = ctrl_pdata->panel_data.panel_info.yres;
++
++	byte_per_pixel = ctrl_pdata->panel_data.panel_info.bpp / 8;
++	actual_stride = panel_xres * byte_per_pixel;
++	padding_length = dma_stride - actual_stride;
++
++	/* remove the padding and copy to continuous buffer */
++	while (scan_count < panel_yres) {
++		memcpy((tx_buf + scan_count * actual_stride),
++			(buf + scan_count * (actual_stride + padding_length)),
++				actual_stride);
++		scan_count++;
++	}
++
++	init_completion(&ctrl_pdata->spi_panel_te);
++
++	rc = wait_for_completion_timeout(&ctrl_pdata->spi_panel_te,
++				   msecs_to_jiffies(SPI_PANEL_TE_TIMEOUT));
++
++	if (rc == 0)
++		pr_err("wait panel TE time out\n");
++
++	rc = mdss_spi_tx_pixel(tx_buf, ctrl_pdata->byte_pre_frame);
++
++	return rc;
++}
++
++int mdss_spi_panel_on(struct mdss_panel_data *pdata)
++{
++	struct spi_panel_data *ctrl = NULL;
++	struct mdss_panel_info *pinfo;
++	int i;
++
++	if (pdata == NULL) {
++		pr_err("%s: Invalid input data\n", __func__);
++		return -EINVAL;
++	}
++	pinfo = &pdata->panel_info;
++	ctrl = container_of(pdata, struct spi_panel_data,
++				panel_data);
++
++	for (i = 0; i < ctrl->on_cmds.cmd_cnt; i++) {
++		mdss_spi_tx_command(ctrl->on_cmds.cmds[i].command);
++
++		if (ctrl->on_cmds.cmds[i].dchdr.dlen > 1) {
++			mdss_spi_tx_parameter(ctrl->on_cmds.cmds[i].parameter,
++					ctrl->on_cmds.cmds[i].dchdr.dlen-1);
++		}
++		if (ctrl->on_cmds.cmds[i].dchdr.wait != 0)
++			msleep(ctrl->on_cmds.cmds[i].dchdr.wait);
++	}
++
++	//pinfo->blank_state = MDSS_PANEL_BLANK_UNBLANK;
++	pr_debug("%s:-\n", __func__);
++
++	return 0;
++}
++
++
++static int mdss_spi_panel_off(struct mdss_panel_data *pdata)
++{
++	struct spi_panel_data *ctrl = NULL;
++	struct mdss_panel_info *pinfo;
++	int i;
++
++	if (pdata == NULL) {
++		pr_err("%s: Invalid input data\n", __func__);
++		return -EINVAL;
++	}
++
++	pinfo = &pdata->panel_info;
++	ctrl = container_of(pdata, struct spi_panel_data,
++				panel_data);
++
++	for (i = 0; i < ctrl->off_cmds.cmd_cnt; i++) {
++		mdss_spi_tx_command(ctrl->off_cmds.cmds[i].command);
++
++		if (ctrl->off_cmds.cmds[i].dchdr.dlen > 1) {
++			mdss_spi_tx_parameter(ctrl->off_cmds.cmds[i].parameter,
++					ctrl->off_cmds.cmds[i].dchdr.dlen-1);
++		}
++
++		if (ctrl->off_cmds.cmds[i].dchdr.wait != 0)
++			msleep(ctrl->off_cmds.cmds[i].dchdr.wait);
++	}
++
++	//pinfo->blank_state = MDSS_PANEL_BLANK_BLANK;
++	pr_debug("%s:-\n", __func__);
++	return 0;
++}
++
++static void mdss_spi_put_dt_vreg_data(struct device *dev,
++	struct dss_module_power *module_power)
++{
++	if (!module_power) {
++		pr_err("%s: invalid input\n", __func__);
++		return;
++	}
++
++	if (module_power->vreg_config) {
++		devm_kfree(dev, module_power->vreg_config);
++		module_power->vreg_config = NULL;
++	}
++	module_power->num_vreg = 0;
++}
++
++
++static int mdss_spi_get_panel_vreg_data(struct device *dev,
++			struct dss_module_power *mp)
++{
++	int i = 0, rc = 0;
++	u32 tmp = 0;
++	struct device_node *of_node = NULL, *supply_node = NULL;
++	struct device_node *supply_root_node = NULL;
++
++	if (!dev || !mp) {
++		pr_err("%s: invalid input\n", __func__);
++		rc = -EINVAL;
++		return rc;
++	}
++
++	of_node = dev->of_node;
++
++	mp->num_vreg = 0;
++
++	supply_root_node = of_get_child_by_name(of_node,
++				"qcom,panel-supply-entries");
++
++	for_each_child_of_node(supply_root_node, supply_node) {
++		mp->num_vreg++;
++	}
++	if (mp->num_vreg == 0) {
++		pr_debug("%s: no vreg\n", __func__);
++		goto novreg;
++	} else {
++		pr_debug("%s: vreg found. count=%d\n", __func__, mp->num_vreg);
++	}
++
++	mp->vreg_config = kzalloc(sizeof(struct dss_vreg) *
++		mp->num_vreg, GFP_KERNEL);
++
++
++	for_each_child_of_node(supply_root_node, supply_node) {
++		const char *st = NULL;
++		/* vreg-name */
++		rc = of_property_read_string(supply_node,
++			"qcom,supply-name", &st);
++		if (rc) {
++			pr_err("%s: error reading name. rc=%d\n",
++				__func__, rc);
++			goto error;
++		}
++		snprintf(mp->vreg_config[i].vreg_name,
++			ARRAY_SIZE((mp->vreg_config[i].vreg_name)), "%s", st);
++		/* vreg-min-voltage */
++		rc = of_property_read_u32(supply_node,
++			"qcom,supply-min-voltage", &tmp);
++		if (rc) {
++			pr_err("%s: error reading min volt. rc=%d\n",
++				__func__, rc);
++			goto error;
++		}
++		mp->vreg_config[i].min_voltage = tmp;
++
++		/* vreg-max-voltage */
++		rc = of_property_read_u32(supply_node,
++			"qcom,supply-max-voltage", &tmp);
++		if (rc) {
++			pr_err("%s: error reading max volt. rc=%d\n",
++				__func__, rc);
++			goto error;
++		}
++		mp->vreg_config[i].max_voltage = tmp;
++
++		/* enable-load */
++		rc = of_property_read_u32(supply_node,
++			"qcom,supply-enable-load", &tmp);
++		if (rc) {
++			pr_err("%s: error reading enable load. rc=%d\n",
++				__func__, rc);
++			goto error;
++		}
++		mp->vreg_config[i].load[DSS_REG_MODE_ENABLE] = tmp;
++
++		/* disable-load */
++		rc = of_property_read_u32(supply_node,
++			"qcom,supply-disable-load", &tmp);
++		if (rc) {
++			pr_err("%s: error reading disable load. rc=%d\n",
++				__func__, rc);
++			goto error;
++		}
++		mp->vreg_config[i].load[DSS_REG_MODE_DISABLE] = tmp;
++
++		/* pre-sleep */
++		rc = of_property_read_u32(supply_node,
++			"qcom,supply-pre-on-sleep", &tmp);
++		if (rc) {
++			pr_debug("%s: error reading supply pre sleep value\n",
++						__func__);
++			rc = 0;
++		} else {
++			mp->vreg_config[i].pre_on_sleep = tmp;
++		}
++
++		rc = of_property_read_u32(supply_node,
++			"qcom,supply-pre-off-sleep", &tmp);
++		if (rc) {
++			pr_debug("%s: error reading supply pre sleep value\n",
++						__func__);
++			rc = 0;
++		} else {
++			mp->vreg_config[i].pre_off_sleep = tmp;
++		}
++
++		/* post-sleep */
++		rc = of_property_read_u32(supply_node,
++			"qcom,supply-post-on-sleep", &tmp);
++		if (rc) {
++			pr_debug("%s: error reading supply post sleep value\n",
++						__func__);
++			rc = 0;
++		} else {
++			mp->vreg_config[i].post_on_sleep = tmp;
++		}
++
++		rc = of_property_read_u32(supply_node,
++			"qcom,supply-post-off-sleep", &tmp);
++		if (rc) {
++			pr_debug("%s: error reading supply post sleep value\n",
++						__func__);
++			rc = 0;
++		} else {
++			mp->vreg_config[i].post_off_sleep = tmp;
++		}
++
++		++i;
++	}
++	return rc;
++error:
++	kfree(mp->vreg_config);
++	mp->vreg_config = NULL;
++
++novreg:
++	mp->num_vreg = 0;
++
++	return rc;
++
++}
++
++static int mdss_spi_panel_parse_cmds(struct device_node *np,
++		struct spi_panel_cmds *pcmds, char *cmd_key)
++{
++	const char *data;
++	int blen = 0, len;
++	char *buf, *bp;
++	struct spi_ctrl_hdr *dchdr;
++	int i, cnt;
++
++	data = of_get_property(np, cmd_key, &blen);
++	if (!data) {
++		pr_err("%s: failed, key=%s\n", __func__, cmd_key);
++		return -ENOMEM;
++	}
++
++	buf = kzalloc(sizeof(char) * blen, GFP_KERNEL);
++	if (!buf)
++		return -ENOMEM;
++
++	memcpy(buf, data, blen);
++
++	/* scan dcs commands */
++	bp = buf;
++	len = blen;
++	cnt = 0;
++	while (len >= sizeof(*dchdr)) {
++		dchdr = (struct spi_ctrl_hdr *)bp;
++		if (dchdr->dlen > len) {
++			pr_err("%s: dtsi parse error, len=%d",
++				__func__, dchdr->dlen);
++			goto exit_free;
++		}
++		bp += sizeof(*dchdr);
++		len -= sizeof(*dchdr);
++		bp += dchdr->dlen;
++		len -= dchdr->dlen;
++		cnt++;
++	}
++
++	if (len != 0) {
++		pr_err("%s: dcs_cmd=%x len=%d error!",
++				__func__, buf[0], len);
++		goto exit_free;
++	}
++
++	pcmds->cmds = kzalloc(cnt * sizeof(struct spi_cmd_desc),
++						GFP_KERNEL);
++	if (!pcmds->cmds)
++		goto exit_free;
++
++	pcmds->cmd_cnt = cnt;
++	pcmds->buf = buf;
++	pcmds->blen = blen;
++
++	bp = buf;
++	len = blen;
++	for (i = 0; i < cnt; i++) {
++		dchdr = (struct spi_ctrl_hdr *)bp;
++		len -= sizeof(*dchdr);
++		bp += sizeof(*dchdr);
++		pcmds->cmds[i].dchdr = *dchdr;
++		pcmds->cmds[i].command = bp;
++		pcmds->cmds[i].parameter = bp + sizeof(char);
++		bp += dchdr->dlen;
++		len -= dchdr->dlen;
++	}
++
++	pr_debug("%s: dcs_cmd=%x, len=%d, cmd_cnt=%d\n", __func__,
++		pcmds->buf[0], pcmds->blen, pcmds->cmd_cnt);
++
++	return 0;
++
++exit_free:
++	kfree(buf);
++	return -ENOMEM;
++}
++static int mdss_spi_panel_parse_reset_seq(struct device_node *np,
++		u32 rst_seq[MDSS_SPI_RST_SEQ_LEN], u32 *rst_len,
++		const char *name)
++{
++	int num = 0, i;
++	int rc;
++	struct property *data;
++	u32 tmp[MDSS_SPI_RST_SEQ_LEN];
++
++	*rst_len = 0;
++	data = of_find_property(np, name, &num);
++	num /= sizeof(u32);
++	if (!data || !num || num > MDSS_SPI_RST_SEQ_LEN || num % 2) {
++		pr_err("%s:%d, error reading %s, length found = %d\n",
++			__func__, __LINE__, name, num);
++	} else {
++		rc = of_property_read_u32_array(np, name, tmp, num);
++		if (rc)
++			pr_err("%s:%d, error reading %s, rc = %d\n",
++				__func__, __LINE__, name, rc);
++		else {
++			for (i = 0; i < num; ++i)
++				rst_seq[i] = tmp[i];
++			*rst_len = num;
++		}
++	}
++	return 0;
++}
++
++
++static int mdss_spi_panel_parse_dt(struct device_node *np,
++		struct spi_panel_data	*ctrl_pdata)
++{
++	u32 tmp;
++	int rc;
++	const char *data;
++	struct mdss_panel_info *pinfo = &(ctrl_pdata->panel_data.panel_info);
++
++	rc = of_property_read_u32(np, "qcom,mdss-spi-panel-width", &tmp);
++	if (rc) {
++		pr_err("%s:%d, panel width not specified\n",
++						__func__, __LINE__);
++		return -EINVAL;
++	}
++	pinfo->xres = (!rc ? tmp : 240);
++
++	rc = of_property_read_u32(np, "qcom,mdss-spi-panel-height", &tmp);
++	if (rc) {
++		pr_err("%s:%d, panel height not specified\n",
++						__func__, __LINE__);
++		return -EINVAL;
++	}
++	pinfo->yres = (!rc ? tmp : 320);
++
++	rc = of_property_read_u32(np,
++		"qcom,mdss-pan-physical-width-dimension", &tmp);
++	pinfo->physical_width = (!rc ? tmp : 0);
++	rc = of_property_read_u32(np,
++		"qcom,mdss-pan-physical-height-dimension", &tmp);
++	pinfo->physical_height = (!rc ? tmp : 0);
++	rc = of_property_read_u32(np, "qcom,mdss-spi-panel-framerate", &tmp);
++	pinfo->spi.frame_rate = (!rc ? tmp : 30);
++	rc = of_property_read_u32(np, "qcom,mdss-spi-h-front-porch", &tmp);
++	pinfo->lcdc.h_front_porch = (!rc ? tmp : 6);
++	rc = of_property_read_u32(np, "qcom,mdss-spi-h-back-porch", &tmp);
++	pinfo->lcdc.h_back_porch = (!rc ? tmp : 6);
++	rc = of_property_read_u32(np, "qcom,mdss-spi-h-pulse-width", &tmp);
++	pinfo->lcdc.h_pulse_width = (!rc ? tmp : 2);
++	rc = of_property_read_u32(np, "qcom,mdss-spi-h-sync-skew", &tmp);
++	pinfo->lcdc.hsync_skew = (!rc ? tmp : 0);
++	rc = of_property_read_u32(np, "qcom,mdss-spi-v-back-porch", &tmp);
++	pinfo->lcdc.v_back_porch = (!rc ? tmp : 6);
++	rc = of_property_read_u32(np, "qcom,mdss-spi-v-front-porch", &tmp);
++	pinfo->lcdc.v_front_porch = (!rc ? tmp : 6);
++	rc = of_property_read_u32(np, "qcom,mdss-spi-v-pulse-width", &tmp);
++	pinfo->lcdc.v_pulse_width = (!rc ? tmp : 2);
++
++
++	rc = of_property_read_u32(np, "qcom,mdss-spi-bpp", &tmp);
++	if (rc) {
++		pr_err("%s:%d, bpp not specified\n", __func__, __LINE__);
++		return -EINVAL;
++	}
++	pinfo->bpp = (!rc ? tmp : 16);
++
++	pinfo->pdest = DISPLAY_1;
++
++	ctrl_pdata->bklt_ctrl = UNKNOWN_CTRL;
++	data = of_get_property(np, "qcom,mdss-spi-bl-pmic-control-type", NULL);
++	if (data) {
++		if (!strcmp(data, "bl_ctrl_wled")) {
++			led_trigger_register_simple("bkl-trigger",
++				&bl_led_trigger);
++			pr_debug("%s: SUCCESS-> WLED TRIGGER register\n",
++				__func__);
++			ctrl_pdata->bklt_ctrl = BL_WLED;
++		} else if (!strcmp(data, "bl_ctrl_pwm")) {
++			ctrl_pdata->bklt_ctrl = BL_PWM;
++			ctrl_pdata->pwm_pmi = of_property_read_bool(np,
++					"qcom,mdss-spi-bl-pwm-pmi");
++			rc = of_property_read_u32(np,
++				"qcom,mdss-spi-bl-pmic-pwm-frequency", &tmp);
++			if (rc) {
++				pr_err("%s:%d, Error, panel pwm_period\n",
++						__func__, __LINE__);
++				return -EINVAL;
++			}
++			ctrl_pdata->pwm_period = tmp;
++			if (ctrl_pdata->pwm_pmi) {
++				ctrl_pdata->pwm_bl = of_pwm_get(np, NULL);
++				if (IS_ERR(ctrl_pdata->pwm_bl)) {
++					pr_err("%s: Error, pwm device\n",
++								__func__);
++					ctrl_pdata->pwm_bl = NULL;
++					return -EINVAL;
++				}
++			} else {
++				rc = of_property_read_u32(np,
++					"qcom,mdss-spi-bl-pmic-bank-select",
++								 &tmp);
++				if (rc) {
++					pr_err("%s:%d, Error, lpg channel\n",
++							__func__, __LINE__);
++					return -EINVAL;
++				}
++				ctrl_pdata->pwm_lpg_chan = tmp;
++				tmp = of_get_named_gpio(np,
++					"qcom,mdss-spi-pwm-gpio", 0);
++				ctrl_pdata->pwm_pmic_gpio = tmp;
++				pr_debug("%s: Configured PWM bklt ctrl\n",
++								 __func__);
++			}
++		}
++	}
++	rc = of_property_read_u32(np, "qcom,mdss-brightness-max-level", &tmp);
++	pinfo->brightness_max = (!rc ? tmp : MDSS_MAX_BL_BRIGHTNESS);
++	rc = of_property_read_u32(np, "qcom,mdss-spi-bl-min-level", &tmp);
++	pinfo->bl_min = (!rc ? tmp : 0);
++	rc = of_property_read_u32(np, "qcom,mdss-spi-bl-max-level", &tmp);
++	pinfo->bl_max = (!rc ? tmp : 255);
++	ctrl_pdata->bklt_max = pinfo->bl_max;
++
++
++	mdss_spi_panel_parse_reset_seq(np, pinfo->rst_seq,
++					&(pinfo->rst_seq_len),
++					"qcom,mdss-spi-reset-sequence");
++
++	mdss_spi_panel_parse_cmds(np, &ctrl_pdata->on_cmds,
++		"qcom,mdss-spi-on-command");
++
++	mdss_spi_panel_parse_cmds(np, &ctrl_pdata->off_cmds,
++		"qcom,mdss-spi-off-command");
++
++	return 0;
++}
++
++void mdss_spi_panel_pwm_cfg(struct spi_panel_data *ctrl)
++{
++	if (ctrl->pwm_pmi)
++		return;
++
++	ctrl->pwm_bl = pwm_request(ctrl->pwm_lpg_chan, "lcd-bklt");
++	if (ctrl->pwm_bl == NULL || IS_ERR(ctrl->pwm_bl)) {
++		pr_err("%s: Error: lpg_chan=%d pwm request failed",
++				__func__, ctrl->pwm_lpg_chan);
++	}
++	ctrl->pwm_enabled = 0;
++}
++
++static void mdss_spi_panel_bklt_pwm(struct spi_panel_data *ctrl, int level)
++{
++	int ret;
++	u32 duty;
++	u32 period_ns;
++
++	if (ctrl->pwm_bl == NULL) {
++		pr_err("%s: no PWM\n", __func__);
++		return;
++	}
++
++	if (level == 0) {
++		if (ctrl->pwm_enabled) {
++			ret = pwm_config_us(ctrl->pwm_bl, level,
++					ctrl->pwm_period);
++			if (ret)
++				pr_err("%s: pwm_config_us() failed err=%d.\n",
++						__func__, ret);
++			pwm_disable(ctrl->pwm_bl);
++		}
++		ctrl->pwm_enabled = 0;
++		return;
++	}
++
++	duty = level * ctrl->pwm_period;
++	duty /= ctrl->bklt_max;
++
++	pr_debug("%s: bklt_ctrl=%d pwm_period=%d pwm_gpio=%d pwm_lpg_chan=%d\n",
++			__func__, ctrl->bklt_ctrl, ctrl->pwm_period,
++				ctrl->pwm_pmic_gpio, ctrl->pwm_lpg_chan);
++
++	if (ctrl->pwm_period >= USEC_PER_SEC) {
++		ret = pwm_config_us(ctrl->pwm_bl, duty, ctrl->pwm_period);
++		if (ret) {
++			pr_err("%s: pwm_config_us() failed err=%d.\n",
++					__func__, ret);
++			return;
++		}
++	} else {
++		period_ns = ctrl->pwm_period * NSEC_PER_USEC;
++		ret = pwm_config(ctrl->pwm_bl,
++				level * period_ns / ctrl->bklt_max,
++				period_ns);
++		if (ret) {
++			pr_err("%s: pwm_config() failed err=%d.\n",
++					__func__, ret);
++			return;
++		}
++	}
++
++	if (!ctrl->pwm_enabled) {
++		ret = pwm_enable(ctrl->pwm_bl);
++		if (ret)
++			pr_err("%s: pwm_enable() failed err=%d\n", __func__,
++				ret);
++		ctrl->pwm_enabled = 1;
++	}
++}
++
++
++static void mdss_spi_panel_bl_ctrl(struct mdss_panel_data *pdata,
++							u32 bl_level)
++{
++	struct spi_panel_data *ctrl_pdata = NULL;
++
++	if (pdata == NULL) {
++		pr_err("%s: Invalid input data\n", __func__);
++		return;
++	}
++
++	ctrl_pdata = container_of(pdata, struct spi_panel_data,
++				panel_data);
++
++	if ((bl_level < pdata->panel_info.bl_min) && (bl_level != 0))
++		bl_level = pdata->panel_info.bl_min;
++
++	switch (ctrl_pdata->bklt_ctrl) {
++	case BL_WLED:
++		led_trigger_event(bl_led_trigger, bl_level);
++		break;
++	case BL_PWM:
++		mdss_spi_panel_bklt_pwm(ctrl_pdata, bl_level);
++		break;
++	default:
++		pr_err("%s: Unknown bl_ctrl configuration %d\n",
++			__func__, ctrl_pdata->bklt_ctrl);
++		break;
++	}
++}
++
++int mdss_spi_panel_init(struct device_node *node,
++	struct spi_panel_data	*ctrl_pdata,
++	bool cmd_cfg_cont_splash)
++{
++	int rc = 0;
++	static const char *panel_name;
++	struct mdss_panel_info *pinfo;
++
++	if (!node || !ctrl_pdata) {
++		pr_err("%s: Invalid arguments\n", __func__);
++		return -ENODEV;
++	}
++
++	pinfo = &ctrl_pdata->panel_data.panel_info;
++
++	pr_debug("%s:%d\n", __func__, __LINE__);
++	pinfo->panel_name[0] = '\0';
++	panel_name = of_get_property(node, "qcom,mdss-spi-panel-name", NULL);
++	if (!panel_name) {
++		pr_info("%s:%d, Panel name not specified\n",
++						__func__, __LINE__);
++	} else {
++		pr_info("%s: Panel Name = %s\n", __func__, panel_name);
++		strlcpy(&pinfo->panel_name[0], panel_name, MDSS_MAX_PANEL_LEN);
++	}
++	rc = mdss_spi_panel_parse_dt(node, ctrl_pdata);
++	if (rc) {
++		pr_err("%s:%d panel dt parse failed\n", __func__, __LINE__);
++		return rc;
++	}
++
++	ctrl_pdata->byte_pre_frame = pinfo->xres * pinfo->yres * pinfo->bpp/8;
++
++	ctrl_pdata->tx_buf = kmalloc(ctrl_pdata->byte_pre_frame, GFP_KERNEL);
++	if (!ctrl_pdata->tx_buf) {
++		pr_err("%s: FAILED: cannot alloc tx buf for spi panel\n",
++				__func__);
++		kfree(ctrl_pdata->tx_buf);
++		return -ENOMEM;
++	}
++
++	if (!cmd_cfg_cont_splash)
++		pinfo->cont_splash_enabled = false;
++
++	pr_info("%s: Continuous splash %s\n", __func__,
++		pinfo->cont_splash_enabled ? "enabled" : "disabled");
++
++	pinfo->dynamic_switch_pending = false;
++	pinfo->is_lpm_mode = false;
++	pinfo->esd_rdy = false;
++
++	ctrl_pdata->on = mdss_spi_panel_on;
++	ctrl_pdata->off = mdss_spi_panel_off;
++	ctrl_pdata->panel_data.set_backlight = mdss_spi_panel_bl_ctrl;
++
++	return 0;
++}
++
++static int mdss_spi_get_panel_cfg(char *panel_cfg,
++				struct spi_panel_data	*ctrl_pdata)
++{
++	int rc;
++	struct mdss_panel_cfg *pan_cfg = NULL;
++
++	if (!ctrl_pdata)
++		return MDSS_PANEL_INTF_INVALID;
++
++	pan_cfg = ctrl_pdata->mdss_util->panel_intf_type(MDSS_PANEL_INTF_SPI);
++	if (IS_ERR(pan_cfg)) {
++		return PTR_ERR(pan_cfg);
++	} else if (!pan_cfg) {
++		panel_cfg[0] = 0;
++		return 0;
++	}
++
++	pr_debug("%s:%d: cfg:[%s]\n", __func__, __LINE__,
++		 pan_cfg->arg_cfg);
++	ctrl_pdata->panel_data.panel_info.is_prim_panel = true;
++	rc = strlcpy(panel_cfg, pan_cfg->arg_cfg,
++		     sizeof(pan_cfg->arg_cfg));
++	return rc;
++}
++
++static int mdss_spi_panel_regulator_init(struct platform_device *pdev)
++{
++	int rc = 0;
++
++	struct spi_panel_data *ctrl_pdata = NULL;
++
++	if (!pdev) {
++		pr_err("%s: invalid input\n", __func__);
++		return -EINVAL;
++	}
++
++	ctrl_pdata = platform_get_drvdata(pdev);
++	if (!ctrl_pdata) {
++		pr_err("%s: invalid driver data\n", __func__);
++		return -EINVAL;
++	}
++
++	rc = msm_dss_config_vreg(&pdev->dev,
++		ctrl_pdata->panel_power_data.vreg_config,
++		ctrl_pdata->panel_power_data.num_vreg, 1);
++	if (rc)
++		pr_err("%s: failed to init vregs for %s\n",
++			__func__, "PANEL_PM");
++
++	return rc;
++
++}
++irqreturn_t spi_panel_te_handler(int irq, void *data)
++{
++	struct spi_panel_data *ctrl_pdata =
++		(struct spi_panel_data *)data;
++
++	if (!ctrl_pdata) {
++		pr_err("%s: SPI display not available\n", __func__);
++		return IRQ_HANDLED;
++	}
++	complete(&ctrl_pdata->spi_panel_te);
++	return IRQ_HANDLED;
++}
++
++
++static struct device_node *mdss_spi_pref_prim_panel(
++		struct platform_device *pdev)
++{
++	struct device_node *spi_pan_node = NULL;
++
++	pr_debug("%s:%d: Select primary panel from dt\n",
++					__func__, __LINE__);
++	spi_pan_node = of_parse_phandle(pdev->dev.of_node,
++					"qcom,spi-pref-prim-pan", 0);
++	if (!spi_pan_node)
++		pr_err("%s:can't find panel phandle\n", __func__);
++
++	return spi_pan_node;
++}
++
++int spi_panel_device_register(struct device_node *pan_node,
++				struct spi_panel_data *ctrl_pdata)
++{
++	int rc;
++	struct mdss_panel_info *pinfo = &(ctrl_pdata->panel_data.panel_info);
++	struct device_node *spi_ctrl_np = NULL;
++	struct platform_device *ctrl_pdev = NULL;
++
++	pinfo->type = SPI_PANEL;
++
++	spi_ctrl_np = of_parse_phandle(pan_node,
++				"qcom,mdss-spi-panel-controller", 0);
++	if (!spi_ctrl_np) {
++		pr_err("%s: SPI controller node not initialized\n", __func__);
++		return -EPROBE_DEFER;
++	}
++
++	ctrl_pdev = of_find_device_by_node(spi_ctrl_np);
++
++	rc = mdss_spi_panel_regulator_init(ctrl_pdev);
++	if (rc) {
++		pr_err("%s: failed to init regulator, rc=%d\n",
++						__func__, rc);
++		return rc;
++	}
++
++	pinfo->panel_max_fps = mdss_panel_get_framerate(pinfo);
++	pinfo->panel_max_vtotal = mdss_panel_get_vtotal(pinfo);
++
++	ctrl_pdata->disp_te_gpio = of_get_named_gpio(ctrl_pdev->dev.of_node,
++		"qcom,platform-te-gpio", 0);
++
++	if (!gpio_is_valid(ctrl_pdata->disp_te_gpio))
++		pr_err("%s:%d, TE gpio not specified\n",
++						__func__, __LINE__);
++
++	ctrl_pdata->rst_gpio = of_get_named_gpio(ctrl_pdev->dev.of_node,
++			 "qcom,platform-reset-gpio", 0);
++	if (!gpio_is_valid(ctrl_pdata->rst_gpio))
++		pr_err("%s:%d, reset gpio not specified\n",
++						__func__, __LINE__);
++
++	ctrl_pdata->panel_data.event_handler = mdss_spi_panel_event_handler;
++
++	if (ctrl_pdata->bklt_ctrl == BL_PWM)
++		mdss_spi_panel_pwm_cfg(ctrl_pdata);
++
++	ctrl_pdata->ctrl_state = CTRL_STATE_UNKNOWN;
++
++	if (pinfo->cont_splash_enabled) {
++		rc = mdss_spi_panel_power_ctrl(&(ctrl_pdata->panel_data),
++			MDSS_PANEL_POWER_ON);
++		if (rc) {
++			pr_err("%s: Panel power on failed\n", __func__);
++			return rc;
++		}
++		if (ctrl_pdata->bklt_ctrl == BL_PWM)
++			ctrl_pdata->pwm_enabled = 1;
++		//pinfo->blank_state = MDSS_PANEL_BLANK_UNBLANK;
++		ctrl_pdata->ctrl_state |=
++			(CTRL_STATE_PANEL_INIT | CTRL_STATE_MDP_ACTIVE);
++	} else {
++		pinfo->panel_power_state = MDSS_PANEL_POWER_OFF;
++	}
++
++	rc = mdss_register_panel(ctrl_pdev, &(ctrl_pdata->panel_data));
++	if (rc) {
++		pr_err("%s: unable to register SPI panel\n", __func__);
++		return rc;
++	}
++
++	pr_debug("%s: Panel data initialized\n", __func__);
++	return 0;
++}
++
++
++/**
++ * mdss_spi_find_panel_of_node(): find device node of spi panel
++ * @pdev: platform_device of the spi ctrl node
++ * @panel_cfg: string containing intf specific config data
++ *
++ * Function finds the panel device node using the interface
++ * specific configuration data. This configuration data is
++ * could be derived from the result of bootloader's GCDB
++ * panel detection mechanism. If such config data doesn't
++ * exist then this panel returns the default panel configured
++ * in the device tree.
++ *
++ * returns pointer to panel node on success, NULL on error.
++ */
++static struct device_node *mdss_spi_find_panel_of_node(
++		struct platform_device *pdev, char *panel_cfg)
++{
++	int len, i;
++	int ctrl_id = pdev->id - 1;
++	char panel_name[MDSS_MAX_PANEL_LEN] = "";
++	char ctrl_id_stream[3] =  "0:";
++	char *stream = NULL, *pan = NULL;
++	struct device_node *spi_pan_node = NULL, *mdss_node = NULL;
++
++	len = strlen(panel_cfg);
++	if (!len) {
++		/* no panel cfg chg, parse dt */
++		pr_err("%s:%d: no cmd line cfg present\n",
++			 __func__, __LINE__);
++		goto end;
++	} else {
++		if (ctrl_id == 1)
++			strlcpy(ctrl_id_stream, "1:", 3);
++
++		stream = strnstr(panel_cfg, ctrl_id_stream, len);
++		if (!stream) {
++			pr_err("controller config is not present\n");
++			goto end;
++		}
++		stream += 2;
++
++		pan = strnchr(stream, strlen(stream), ':');
++		if (!pan) {
++			strlcpy(panel_name, stream, MDSS_MAX_PANEL_LEN);
++		} else {
++			for (i = 0; (stream + i) < pan; i++)
++				panel_name[i] = *(stream + i);
++			panel_name[i] = 0;
++		}
++
++		pr_debug("%s:%d:%s:%s\n", __func__, __LINE__,
++			 panel_cfg, panel_name);
++
++		mdss_node = of_parse_phandle(pdev->dev.of_node,
++					     "qcom,mdss-mdp", 0);
++
++		if (!mdss_node) {
++			pr_err("%s: %d: mdss_node null\n",
++			       __func__, __LINE__);
++			return NULL;
++		}
++		spi_pan_node = of_find_node_by_name(mdss_node,
++						    panel_name);
++		if (!spi_pan_node) {
++			pr_err("%s: invalid pan node, selecting prim panel\n",
++			       __func__);
++			goto end;
++		}
++		return spi_pan_node;
++	}
++end:
++	if (strcmp(panel_name, NONE_PANEL))
++		spi_pan_node = mdss_spi_pref_prim_panel(pdev);
++
++	return spi_pan_node;
++}
++
++
++static int mdss_spi_panel_probe(struct platform_device *pdev)
++{
++	int rc = 0;
++	struct spi_panel_data	*ctrl_pdata;
++	struct mdss_panel_cfg *pan_cfg = NULL;
++	struct device_node *spi_pan_node = NULL;
++	bool cmd_cfg_cont_splash = true;
++	char panel_cfg[MDSS_MAX_PANEL_LEN];
++	struct mdss_util_intf *util;
++	const char *ctrl_name;
++
++	util = mdss_get_util_intf();
++	if (util == NULL) {
++		pr_err("Failed to get mdss utility functions\n");
++		return -ENODEV;
++	}
++
++	if (!util->mdp_probe_done) {
++		pr_err("%s: MDP not probed yet!\n", __func__);
++		return -EPROBE_DEFER;
++	}
++
++	if (!pdev->dev.of_node) {
++		pr_err("SPI driver only supports device tree probe\n");
++		return -ENOTSUPP;
++	}
++
++	pan_cfg = util->panel_intf_type(MDSS_PANEL_INTF_DSI);
++	if (IS_ERR(pan_cfg)) {
++		pr_err("%s: return MDSS_PANEL_INTF_DSI\n", __func__);
++		return PTR_ERR(pan_cfg);
++	} else if (pan_cfg) {
++		pr_err("%s: DSI is primary\n", __func__);
++		return -ENODEV;
++	}
++
++	ctrl_pdata = platform_get_drvdata(pdev);
++	if (!ctrl_pdata) {
++		ctrl_pdata = devm_kzalloc(&pdev->dev,
++					  sizeof(struct spi_panel_data),
++					  GFP_KERNEL);
++		if (!ctrl_pdata) {
++			pr_err("%s: FAILED: cannot alloc spi panel\n",
++			       __func__);
++			rc = -ENOMEM;
++			goto error_no_mem;
++		}
++		platform_set_drvdata(pdev, ctrl_pdata);
++	}
++
++	ctrl_pdata->mdss_util = util;
++
++	ctrl_name = of_get_property(pdev->dev.of_node, "label", NULL);
++	if (!ctrl_name)
++		pr_info("%s:%d, Ctrl name not specified\n",
++			__func__, __LINE__);
++	else
++		pr_info("%s: Ctrl name = %s\n",
++			__func__, ctrl_name);
++
++
++	rc = of_platform_populate(pdev->dev.of_node,
++				  NULL, NULL, &pdev->dev);
++	if (rc) {
++		dev_err(&pdev->dev,
++			"%s: failed to add child nodes, rc=%d\n",
++			__func__, rc);
++		goto error_no_mem;
++	}
++
++	rc = mdss_spi_panel_pinctrl_init(pdev);
++	if (rc)
++		pr_warn("%s: failed to get pin resources\n", __func__);
++
++	rc = mdss_spi_get_panel_vreg_data(&pdev->dev,
++					&ctrl_pdata->panel_power_data);
++	if (rc) {
++		dev_err(&pdev->dev,
++			"%s: failed to get panel vreg data, rc=%d\n",
++			__func__, rc);
++		goto error_vreg;
++	}
++
++	/* SPI panels can be different between controllers */
++	rc = mdss_spi_get_panel_cfg(panel_cfg, ctrl_pdata);
++	if (!rc)
++		/* spi panel cfg not present */
++		pr_warn("%s:%d:spi specific cfg not present\n",
++			__func__, __LINE__);
++
++	/* find panel device node */
++	spi_pan_node = mdss_spi_find_panel_of_node(pdev, panel_cfg);
++	if (!spi_pan_node) {
++		pr_err("%s: can't find panel node %s\n", __func__, panel_cfg);
++		goto error_pan_node;
++	}
++
++	cmd_cfg_cont_splash = true;
++
++	rc = mdss_spi_panel_init(spi_pan_node, ctrl_pdata, cmd_cfg_cont_splash);
++	if (rc) {
++		pr_err("%s: spi panel init failed\n", __func__);
++		goto error_pan_node;
++	}
++
++	rc = spi_panel_device_register(spi_pan_node, ctrl_pdata);
++	if (rc) {
++		pr_err("%s: spi panel dev reg failed\n", __func__);
++		goto error_pan_node;
++	}
++
++	ctrl_pdata->panel_data.event_handler = mdss_spi_panel_event_handler;
++
++
++	init_completion(&ctrl_pdata->spi_panel_te);
++
++	rc = devm_request_irq(&pdev->dev,
++		gpio_to_irq(ctrl_pdata->disp_te_gpio),
++		spi_panel_te_handler, IRQF_TRIGGER_RISING,
++		"TE_GPIO", ctrl_pdata);
++	if (rc) {
++		pr_err("TE request_irq failed.\n");
++		return rc;
++	}
++
++	pr_debug("%s: spi panel  initialized\n", __func__);
++	return 0;
++
++error_pan_node:
++	of_node_put(spi_pan_node);
++error_vreg:
++	mdss_spi_put_dt_vreg_data(&pdev->dev,
++			&ctrl_pdata->panel_power_data);
++error_no_mem:
++	devm_kfree(&pdev->dev, ctrl_pdata);
++	return rc;
++}
++
++
++static const struct of_device_id mdss_spi_panel_match[] = {
++	{ .compatible = "qcom,mdss-spi-display" },
++	{},
++};
++
++static struct platform_driver this_driver = {
++	.probe = mdss_spi_panel_probe,
++	.driver = {
++	.name = "spi_panel",
++	.owner  = THIS_MODULE,
++	.of_match_table = mdss_spi_panel_match,
++	},
++};
++
++static int __init mdss_spi_display_init(void)
++{
++	int ret;
++
++	ret = platform_driver_register(&this_driver);
++	return 0;
++}
++module_init(mdss_spi_display_init);
++
++MODULE_DEVICE_TABLE(of, mdss_spi_panel_match);
+diff --git a/drivers/video/msm/mdss/mdss_spi_panel.h b/drivers/video/msm/mdss/mdss_spi_panel.h
+new file mode 100644
+index 0000000..4a9f605
+--- /dev/null
++++ b/drivers/video/msm/mdss/mdss_spi_panel.h
+@@ -0,0 +1,116 @@
++/* Copyright (c) 2017, The Linux Foundation. All rights reserved.
++ *
++ * This program is free software; you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License version 2 and
++ * only version 2 as published by the Free Software Foundation.
++ *
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details.
++ *
++ */
++
++
++#ifndef __MDSS_SPI_PANEL_H__
++#define __MDSS_SPI_PANEL_H__
++
++#if defined(CONFIG_FB_MSM_MDSS_SPI_PANEL) && defined(CONFIG_SPI_QUP)
++#include <linux/list.h>
++#include <linux/mdss_io_util.h>
++#include <linux/irqreturn.h>
++#include <linux/pinctrl/consumer.h>
++#include <linux/gpio.h>
++
++#include "mdss_panel.h"
++
++#define MDSS_MAX_BL_BRIGHTNESS 255
++
++#define MDSS_SPI_RST_SEQ_LEN	10
++
++#define NONE_PANEL "none"
++
++#define CTRL_STATE_UNKNOWN		0x00
++#define CTRL_STATE_PANEL_INIT		BIT(0)
++#define CTRL_STATE_MDP_ACTIVE		BIT(1)
++
++#define MDSS_PINCTRL_STATE_DEFAULT "mdss_default"
++#define MDSS_PINCTRL_STATE_SLEEP  "mdss_sleep"
++#define SPI_PANEL_TE_TIMEOUT	400
++
++enum spi_panel_data_type {
++	panel_cmd,
++	panel_parameter,
++	panel_pixel,
++	UNKNOWN_FORMAT,
++};
++
++
++enum spi_panel_bl_ctrl {
++	BL_PWM,
++	BL_WLED,
++	BL_DCS_CMD,
++	UNKNOWN_CTRL,
++};
++
++struct spi_pinctrl_res {
++	struct pinctrl *pinctrl;
++	struct pinctrl_state *gpio_state_active;
++	struct pinctrl_state *gpio_state_suspend;
++};
++#define SPI_PANEL_DST_FORMAT_RGB565		0
++
++struct spi_ctrl_hdr {
++	char wait;	/* ms */
++	char dlen;	/* 8 bits */
++};
++
++struct spi_cmd_desc {
++	struct spi_ctrl_hdr dchdr;
++	char *command;
++	char *parameter;
++};
++
++struct spi_panel_cmds {
++	char *buf;
++	int blen;
++	struct spi_cmd_desc *cmds;
++	int cmd_cnt;
++};
++
++struct spi_panel_data {
++	struct mdss_panel_data panel_data;
++	struct mdss_util_intf *mdss_util;
++	struct spi_pinctrl_res pin_res;
++	struct dss_module_power panel_power_data;
++	struct completion spi_panel_te;
++	int byte_pre_frame;
++	char *tx_buf;
++	u8 ctrl_state;
++	int disp_te_gpio;
++	int rst_gpio;
++	struct spi_panel_cmds on_cmds;
++	struct spi_panel_cmds off_cmds;
++	int (*on)(struct mdss_panel_data *pdata);
++	int (*off)(struct mdss_panel_data *pdata);
++	struct pwm_device *pwm_bl;
++	int bklt_ctrl;	/* backlight ctrl */
++	bool pwm_pmi;
++	int pwm_period;
++	int pwm_pmic_gpio;
++	int pwm_lpg_chan;
++	int pwm_enabled;
++	int bklt_max;
++};
++int mdss_spi_panel_kickoff(struct mdss_panel_data *pdata,
++				char *buf, int len, int stride);
++#else
++
++int mdss_spi_panel_kickoff(struct mdss_panel_data *pdata,
++				char *buf, int len, int stride){
++	return 0;
++}
++
++#endif/* End of CONFIG_FB_MSM_MDSS_SPI_PANEL && ONFIG_SPI_QUP */
++
++#endif /* End of __MDSS_SPI_PANEL_H__ */
+-- 
+1.9.1
+

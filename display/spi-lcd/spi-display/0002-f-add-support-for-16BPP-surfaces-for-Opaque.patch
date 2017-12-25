@@ -1,0 +1,54 @@
+From 7fa4dcc01718ded9a71e9977e7b04e3d5641a52d Mon Sep 17 00:00:00 2001
+From: Wang Xudong <wxudong@qti.qualcomm.com>
+Date: Wed, 17 May 2017 15:04:10 +0800
+Subject: [PATCH 2/2] f: add support for 16BPP surfaces for Opaque
+
+Enable 16BPP surfaces for Opaque pixel format based on
+configuration setting.
+
+Change-Id: I17c9d6935a098c5ce675fee40d805907ea31e711
+---
+ services/surfaceflinger/Android.mk         | 3 +++
+ services/surfaceflinger/SurfaceFlinger.cpp | 8 ++++++++
+ 2 files changed, 11 insertions(+)
+
+diff --git a/services/surfaceflinger/Android.mk b/services/surfaceflinger/Android.mk
+index 5880404..35d875e 100644
+--- a/services/surfaceflinger/Android.mk
++++ b/services/surfaceflinger/Android.mk
+@@ -163,6 +163,9 @@ ifeq ($(TARGET_USES_QCOM_BSP), true)
+ ifeq ($(GET_FRAMEBUFFER_FORMAT_FROM_HWC),true)
+     LOCAL_CFLAGS += -DGET_FRAMEBUFFER_FORMAT_FROM_HWC
+ endif
++ifeq ($(TARGET_USES_16BPPSURFACE_FOR_OPAQUE),true)
++    LOCAL_CFLAGS += -DUSE_16BPPSURFACE_FOR_OPAQUE
++endif
+     LOCAL_SHARED_LIBRARIES += libqdutils
+     LOCAL_SHARED_LIBRARIES += libqdMetaData
+     LOCAL_CFLAGS += -DQTI_BSP
+diff --git a/services/surfaceflinger/SurfaceFlinger.cpp b/services/surfaceflinger/SurfaceFlinger.cpp
+index 2cd699b..413c11c 100644
+--- a/services/surfaceflinger/SurfaceFlinger.cpp
++++ b/services/surfaceflinger/SurfaceFlinger.cpp
+@@ -2512,10 +2512,18 @@ status_t SurfaceFlinger::createNormalLayer(const sp<Client>& client,
+     switch (format) {
+     case PIXEL_FORMAT_TRANSPARENT:
+     case PIXEL_FORMAT_TRANSLUCENT:
++#ifdef USE_16BPPSURFACE_FOR_OPAQUE
++	format = PIXEL_FORMAT_RGB_565;
++#else
+         format = PIXEL_FORMAT_RGBA_8888;
++#endif
+         break;
+     case PIXEL_FORMAT_OPAQUE:
++#ifdef USE_16BPPSURFACE_FOR_OPAQUE
++	format = PIXEL_FORMAT_RGB_565;
++#else
+         format = PIXEL_FORMAT_RGBX_8888;
++#endif
+         break;
+     }
+ 
+-- 
+1.9.1
+

@@ -1,0 +1,70 @@
+commit 5de2cba707a3ff6fdf91c6414ed4abccd9302a5a
+Author: Wang Xudong <wxudong@qti.qualcomm.com>
+Date:   Mon May 15 15:59:57 2017 +0800
+
+    enable backlight
+    
+    Change-Id: I962a6038c18fbd3827084dc8548b11d68573196f
+
+diff --git a/dev/gcdb/display/gcdb_display.c b/dev/gcdb/display/gcdb_display.c
+index 01c62f0..a9afe75 100644
+--- a/dev/gcdb/display/gcdb_display.c
++++ b/dev/gcdb/display/gcdb_display.c
+@@ -153,7 +153,7 @@ static int mdss_dsi_bl_enable(uint8_t enable)
+ {
+ 	int ret = NO_ERROR;
+ 
+-	ret = panel_backlight_ctrl(enable);
++	ret = panel_backlight_ctrl(1);
+ 	if (ret)
+ 		dprintf(CRITICAL, "Backlight %s failed\n", enable ? "enable" :
+ 							"disable");
+diff --git a/dev/gcdb/display/include/panel_auo_cx_qvga_cmd.h b/dev/gcdb/display/include/panel_auo_cx_qvga_cmd.h
+index 2be60a0..c4a4a52 100644
+--- a/dev/gcdb/display/include/panel_auo_cx_qvga_cmd.h
++++ b/dev/gcdb/display/include/panel_auo_cx_qvga_cmd.h
+@@ -38,7 +38,7 @@
+ /* Panel configuration                                                       */
+ /*---------------------------------------------------------------------------*/
+ static struct panel_config auo_cx_qvga_cmd_panel_data = {
+-	"qcom,mdss_dsi_auo_cx_qvga_cmd", "dsi:0:", "qcom,mdss-dsi-panel",
++	"qcom,mdss_spi_st7789h_cmd", "spi:0:", "qcom,mdss-spi-panel",
+ 	10, 1, "DISPLAY_1", 0, 0, 60, 0, 0, 0, 0, 0, 0, 0, 203793408, 0, 0, 0, ""
+ };
+ 
+@@ -385,7 +385,7 @@ static struct panel_reset_sequence auo_cx_qvga_cmd_panel_reset_seq = {
+ /* Backlight setting                                                         */
+ /*---------------------------------------------------------------------------*/
+ static struct backlight auo_cx_qvga_cmd_backlight = {
+-	2, 1, 255, 100, 1, "PMIC_8941"
++	0, 1, 255, 100, 1, "PMIC_8941"
+ };
+ 
+ #endif /*_PANEL_AUO_QVGA_CMD_H_*/
+diff --git a/target/msm8909/init.c b/target/msm8909/init.c
+index 53b5a5d..2cb6478 100644
+--- a/target/msm8909/init.c
++++ b/target/msm8909/init.c
+@@ -541,7 +541,8 @@ int target_cont_splash_screen()
+ 		}
+ 		dprintf(SPEW, "Target_cont_splash=%d\n", splash_screen);
+ 	}
+-	return splash_screen;
++	//return splash_screen;
++	return 1;
+ }
+ 
+ void target_force_cont_splash_disable(uint8_t override)
+diff --git a/target/msm8909/target_display.c b/target/msm8909/target_display.c
+index e52b2c9..502bb3a 100755
+--- a/target/msm8909/target_display.c
++++ b/target/msm8909/target_display.c
+@@ -195,7 +195,7 @@ int target_backlight_ctrl(struct backlight *bl, uint8_t enable)
+ 
+ 	board_pmic_info(&pmic_info, 1);
+ 	if (pmic_info.pmic_version == PM8916_VER)
+-		mpp.base = PM8x41_MMP4_BASE;
++		mpp.base = PM8x41_MMP2_BASE;
+ 	else
+ 		mpp.base = PM8x41_MMP2_BASE;
+ 

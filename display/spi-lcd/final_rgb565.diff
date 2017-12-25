@@ -1,0 +1,737 @@
+diff --git a/device/qcom/msm8909/BoardConfig.mk b/device/qcom/msm8909/BoardConfig.mk
+index dccccce..8d7ddc7 100755
+--- a/device/qcom/msm8909/BoardConfig.mk
++++ b/device/qcom/msm8909/BoardConfig.mk
+@@ -44,7 +44,8 @@ TARGET_NO_BOOTLOADER := false
+ TARGET_NO_KERNEL := false
+ TARGET_NO_RADIOIMAGE := true
+ TARGET_NO_RPC := true
+-GET_FRAMEBUFFER_FORMAT_FROM_HWC := false
++GET_FRAMEBUFFER_FORMAT_FROM_HWC := true
++TARGET_USES_16BPPSURFACE_FOR_OPAQUE := true
+ 
+ BOOTLOADER_GCC_VERSION := arm-eabi-4.8
+ BOOTLOADER_PLATFORM := msm8909# use msm8952 LK configuration
+diff --git a/frameworks/native/services/surfaceflinger/Android.mk b/frameworks/native/services/surfaceflinger/Android.mk
+old mode 100644
+new mode 100755
+index 4eba494..8fa0f73
+--- a/frameworks/native/services/surfaceflinger/Android.mk
++++ b/frameworks/native/services/surfaceflinger/Android.mk
+@@ -115,9 +115,16 @@ LOCAL_SHARED_LIBRARIES := \
+     libgui \
+     libpowermanager
+ 
++ifeq ($(GET_FRAMEBUFFER_FORMAT_FROM_HWC),true)
++	LOCAL_CFLAGS += -DGET_FRAMEBUFFER_FORMAT_FROM_HWC
++endif
++ifeq ($(TARGET_USES_16BPPSURFACE_FOR_OPAQUE),true)
++	LOCAL_CFLAGS += -DUSE_16BPPSURFACE_FOR_OPAQUE
++endif
+ ifeq ($(TARGET_USES_QCOM_BSP), true)
+     LOCAL_C_INCLUDES += hardware/qcom/display/libgralloc
+     LOCAL_C_INCLUDES += hardware/qcom/display/libqdutils
++
+     LOCAL_SHARED_LIBRARIES += libqdutils
+     LOCAL_CFLAGS += -DQTI_BSP
+ endif
+diff --git a/frameworks/native/services/surfaceflinger/DisplayHardware/HWComposer.cpp b/frameworks/native/services/surfaceflinger/DisplayHardware/HWComposer.cpp
+old mode 100644
+new mode 100755
+index a43597a..c815963
+--- a/frameworks/native/services/surfaceflinger/DisplayHardware/HWComposer.cpp
++++ b/frameworks/native/services/surfaceflinger/DisplayHardware/HWComposer.cpp
+@@ -337,13 +337,16 @@ static float getDefaultDensity(uint32_t width, uint32_t height) {
+     if (h >= 1080) return ACONFIGURATION_DENSITY_XHIGH;
+     else           return ACONFIGURATION_DENSITY_TV;
+ }
+-
++//#define HWC_DISPLAY_FBFORMAT 99
+ static const uint32_t DISPLAY_ATTRIBUTES[] = {
+     HWC_DISPLAY_VSYNC_PERIOD,
+     HWC_DISPLAY_WIDTH,
+     HWC_DISPLAY_HEIGHT,
+     HWC_DISPLAY_DPI_X,
+     HWC_DISPLAY_DPI_Y,
++#ifdef GET_FRAMEBUFFER_FORMAT_FROM_HWC
++    HWC_DISPLAY_FBFORMAT, 
++#endif
+     HWC_DISPLAY_COLOR_TRANSFORM,
+     HWC_DISPLAY_NO_ATTRIBUTE,
+ };
+@@ -355,6 +358,9 @@ static const uint32_t PRE_HWC15_DISPLAY_ATTRIBUTES[] = {
+     HWC_DISPLAY_HEIGHT,
+     HWC_DISPLAY_DPI_X,
+     HWC_DISPLAY_DPI_Y,
++#ifdef GET_FRAMEBUFFER_FORMAT_FROM_HWC
++    HWC_DISPLAY_FBFORMAT,
++#endif
+     HWC_DISPLAY_NO_ATTRIBUTE,
+ };
+ 
+@@ -415,6 +421,11 @@ status_t HWComposer::queryDisplayProperties(int disp) {
+                 case HWC_DISPLAY_DPI_Y:
+                     config.ydpi = values[i] / 1000.0f;
+                     break;
++	#ifdef GET_FRAMEBUFFER_FORMAT_FROM_HWC
++		case HWC_DISPLAY_FBFORMAT:
++		    mDisplayData[disp].format = values[i];
++		    break;
++	#endif
+                 case HWC_DISPLAY_COLOR_TRANSFORM:
+                     config.colorTransform = values[i];
+                     break;
+@@ -435,7 +446,9 @@ status_t HWComposer::queryDisplayProperties(int disp) {
+     }
+ 
+     // FIXME: what should we set the format to?
+-    mDisplayData[disp].format = HAL_PIXEL_FORMAT_RGBA_8888;
++#ifndef GET_FRAMEBUFFER_FORMAT_FROM_HWC
++     mDisplayData[disp].format = HAL_PIXEL_FORMAT_RGBA_8888;
++#endif
+     mDisplayData[disp].connected = true;
+     return NO_ERROR;
+ }
+@@ -879,7 +892,11 @@ int HWComposer::getVisualID() const {
+         // FIXME: temporary hack until HAL_PIXEL_FORMAT_IMPLEMENTATION_DEFINED
+         // is supported by the implementation. we can only be in this case
+         // if we have HWC 1.1
++#ifdef GET_FRAMEBUFFER_FORMAT_FROM_HWC
++	return mDisplayData[HWC_DISPLAY_PRIMARY].format;
++#else
+         return HAL_PIXEL_FORMAT_RGBA_8888;
++#endif
+         //return HAL_PIXEL_FORMAT_IMPLEMENTATION_DEFINED;
+     } else {
+         return mFbDev->format;
+diff --git a/frameworks/native/services/surfaceflinger/RenderEngine/RenderEngine.cpp b/frameworks/native/services/surfaceflinger/RenderEngine/RenderEngine.cpp
+old mode 100644
+new mode 100755
+index 7cd42e4..d7fc4e9
+--- a/frameworks/native/services/surfaceflinger/RenderEngine/RenderEngine.cpp
++++ b/frameworks/native/services/surfaceflinger/RenderEngine/RenderEngine.cpp
+@@ -287,12 +287,14 @@ static status_t selectConfigForAttribute(EGLDisplay dpy, EGLint const* attrs,
+     eglGetConfigs(dpy, NULL, 0, &numConfigs);
+     EGLConfig* const configs = new EGLConfig[numConfigs];
+     eglChooseConfig(dpy, attrs, configs, numConfigs, &n);
++	ALOGE("eliot EGL selectConfigForAttribute: n=%d,wanted=%d\n",n,wanted);
+ 
+     if (n) {
+         if (attribute != EGL_NONE) {
+             for (int i=0 ; i<n ; i++) {
+                 EGLint value = 0;
+                 eglGetConfigAttrib(dpy, configs[i], attribute, &value);
++					//ALOGE("eliot EGL value=%d,wanted=%d\n",value,wanted);
+                 if (wanted == value) {
+                     *outConfig = configs[i];
+                     delete [] configs;
+@@ -361,7 +363,7 @@ public:
+     // cast-operator to (EGLint const*)
+     operator EGLint const* () const { return &mList.keyAt(0).v; }
+ };
+-
++ 
+ 
+ static status_t selectEGLConfig(EGLDisplay display, EGLint format,
+     EGLint renderableType, EGLConfig* config) {
+@@ -372,16 +374,24 @@ static status_t selectEGLConfig(EGLDisplay display, EGLint format,
+     EGLint wantedAttributeValue;
+ 
+     EGLAttributeVector attribs;
++
++	ALOGE("eliot EGL selectConfigForAttribute: format=%d,renderableType=%d\n",format,renderableType);
+     if (renderableType) {
+         attribs[EGL_RENDERABLE_TYPE]            = renderableType;
+         attribs[EGL_RECORDABLE_ANDROID]         = EGL_TRUE;
+         attribs[EGL_SURFACE_TYPE]               = EGL_WINDOW_BIT|EGL_PBUFFER_BIT;
+         attribs[EGL_FRAMEBUFFER_TARGET_ANDROID] = EGL_TRUE;
+-        attribs[EGL_RED_SIZE]                   = 8;
+-        attribs[EGL_GREEN_SIZE]                 = 8;
+-        attribs[EGL_BLUE_SIZE]                  = 8;
+-        wantedAttribute                         = EGL_NONE;
+-        wantedAttributeValue                    = EGL_NONE;
++        attribs[EGL_RED_SIZE]                   = 5;
++        attribs[EGL_GREEN_SIZE]                 = 6;
++        attribs[EGL_BLUE_SIZE]                  = 5;
++
++	if (format != HAL_PIXEL_FORMAT_RGBA_8888) {
++		wantedAttribute                     = EGL_NATIVE_VISUAL_ID;
++		wantedAttributeValue                = format;
++	} else {
++		wantedAttribute                     = EGL_NONE;
++		wantedAttributeValue                = EGL_NONE;
++	}
+     } else {
+         // if no renderable type specified, fallback to a simplified query
+         wantedAttribute                         = EGL_NATIVE_VISUAL_ID;
+diff --git a/frameworks/native/services/surfaceflinger/SurfaceFlinger.cpp b/frameworks/native/services/surfaceflinger/SurfaceFlinger.cpp
+old mode 100644
+new mode 100755
+index 0e02068..902d4c0
+--- a/frameworks/native/services/surfaceflinger/SurfaceFlinger.cpp
++++ b/frameworks/native/services/surfaceflinger/SurfaceFlinger.cpp
+@@ -2382,10 +2382,18 @@ status_t SurfaceFlinger::createNormalLayer(const sp<Client>& client,
+     switch (format) {
+     case PIXEL_FORMAT_TRANSPARENT:
+     case PIXEL_FORMAT_TRANSLUCENT:
+-        format = PIXEL_FORMAT_RGBA_8888;
+-        break;
+-    case PIXEL_FORMAT_OPAQUE:
+-        format = PIXEL_FORMAT_RGBX_8888;
++    #ifdef USE_16BPPSURFACE_FOR_OPAQUE
++    	format = PIXEL_FORMAT_RGB_565;
++    #else
++            format = PIXEL_FORMAT_RGB_565;
++    #endif
++            break;
++        case PIXEL_FORMAT_OPAQUE:
++    #ifdef USE_16BPPSURFACE_FOR_OPAQUE
++    	format = PIXEL_FORMAT_RGB_565;
++    #else
++            format = PIXEL_FORMAT_RGB_565;
++    #endif
+         break;
+     }
+ 
+diff --git a/frameworks/native/services/surfaceflinger/tests/resize/Android.mk b/frameworks/native/services/surfaceflinger/tests/resize/Android.mk
+old mode 100644
+new mode 100755
+index d81679e..cc4b0ab
+--- a/frameworks/native/services/surfaceflinger/tests/resize/Android.mk
++++ b/frameworks/native/services/surfaceflinger/tests/resize/Android.mk
+@@ -8,7 +8,8 @@ LOCAL_SHARED_LIBRARIES := \
+ 	libcutils \
+ 	libutils \
+     libui \
+-    libgui
++    libgui \
++    libbinder
+ 
+ LOCAL_MODULE:= test-resize
+ 
+diff --git a/frameworks/native/services/surfaceflinger/tests/resize/resize.cpp b/frameworks/native/services/surfaceflinger/tests/resize/resize.cpp
+old mode 100644
+new mode 100755
+index 8b051e8..93112d2
+--- a/frameworks/native/services/surfaceflinger/tests/resize/resize.cpp
++++ b/frameworks/native/services/surfaceflinger/tests/resize/resize.cpp
+@@ -18,6 +18,8 @@
+ 
+ #include <utils/Log.h>
+ 
++#include <android/native_window.h>
++
+ #include <binder/IPCThreadState.h>
+ #include <binder/ProcessState.h>
+ #include <binder/IServiceManager.h>
+@@ -27,7 +29,7 @@
+ 
+ using namespace android;
+ 
+-namespace android {
++//namespace android {
+ 
+ int main(int argc, char** argv)
+ {
+@@ -39,7 +41,7 @@ int main(int argc, char** argv)
+     sp<SurfaceComposerClient> client = new SurfaceComposerClient();
+     
+     sp<SurfaceControl> surfaceControl = client->createSurface(String8("resize"),
+-            160, 240, PIXEL_FORMAT_RGB_565, 0);
++            320, 240, PIXEL_FORMAT_RGB_565, 0);
+ 
+     sp<Surface> surface = surfaceControl->getSurface();
+ 
+@@ -50,13 +52,13 @@ int main(int argc, char** argv)
+     ANativeWindow_Buffer outBuffer;
+     surface->lock(&outBuffer, NULL);
+     ssize_t bpr = outBuffer.stride * bytesPerPixel(outBuffer.format);
+-    android_memset16((uint16_t*)outBuffer.bits, 0xF800, bpr*outBuffer.height);
++    android_memset16((uint16_t*)outBuffer.bits, 0x07E0, bpr*outBuffer.height);
+     surface->unlockAndPost();
+-
+-    surface->lock(&outBuffer);
++/*
++    surface->lock(&outBuffer, NULL);
+     android_memset16((uint16_t*)outBuffer.bits, 0x07E0, bpr*outBuffer.height);
+     surface->unlockAndPost();
+-
++*/
+     SurfaceComposerClient::openGlobalTransaction();
+     surfaceControl->setSize(320, 240);
+     SurfaceComposerClient::closeGlobalTransaction();
+@@ -66,3 +68,4 @@ int main(int argc, char** argv)
+     
+     return 0;
+ }
++//}
+diff --git a/hardware/libhardware/include/hardware/hwcomposer_defs.h b/hardware/libhardware/include/hardware/hwcomposer_defs.h
+index 9c7d790..09c57a5 100644
+--- a/hardware/libhardware/include/hardware/hwcomposer_defs.h
++++ b/hardware/libhardware/include/hardware/hwcomposer_defs.h
+@@ -196,6 +196,7 @@ enum {
+     /* Indicates which of the vendor-defined color transforms is provided by
+      * this configuration. */
+     HWC_DISPLAY_COLOR_TRANSFORM             = 6,
++    HWC_DISPLAY_FBFORMAT		    = 7,
+ };
+ 
+ /* Allowed events for hwc_methods::eventControl() */
+diff --git a/kernel/arch/arm/boot/dts/qcom/msm8909-mdss.dtsi b/kernel/arch/arm/boot/dts/qcom/msm8909-mdss.dtsi
+index 0313075..11ec709 100755
+--- a/kernel/arch/arm/boot/dts/qcom/msm8909-mdss.dtsi
++++ b/kernel/arch/arm/boot/dts/qcom/msm8909-mdss.dtsi
+@@ -23,8 +23,8 @@
+ 		reg-names = "mdp_phys", "vbif_phys";
+ 		interrupts = <0 72 0>;
+ 
+-		//qcom,mdss-pref-prim-intf = "spi";
+-		qcom,mdss-pref-prim-intf = "dsi";
++		qcom,mdss-pref-prim-intf = "spi";
++		//qcom,mdss-pref-prim-intf = "dsi";
+ 		vdd-supply = <&gdsc_mdss>;
+ 		clocks = <&clock_gcc clk_gcc_mdss_ahb_clk>,
+ 			 <&clock_gcc clk_gcc_mdss_axi_clk>,
+@@ -37,7 +37,7 @@
+             mdss_fb0: qcom,mdss_fb_primary {
+ 			cell-index = <0>;
+ 			compatible = "qcom,mdss-fb";
+-			qcom,mdss-fb-format = "rgba8888";
++			qcom,mdss-fb-format = "rgb565";
+ 			qcom,cont-splash-memory {
+ 				linux,contiguous-region = <&cont_splash_mem>;
+ 			};
+@@ -45,7 +45,7 @@
+ 	};
+ 
+ 	mdss_dsi0: qcom,mdss_dsi@1ac8000 {
+-		compatible = "qcom,mdss-dsi-ctrl";
++		//compatible = "qcom,mdss-dsi-ctrl";
+ 		label = "MDSS DSI CTRL->0";
+ 		cell-index = <0>;
+ 		reg = <0x1ac8000 0x25c>,
+@@ -136,7 +136,7 @@
+ 	};
+ 
+ 	mdss_spi: qcom,mdss_spi {
+-		//compatible = "qcom,mdss-spi-display";
++		compatible = "qcom,mdss-spi-display";
+ 		label = "mdss spi panel";
+ 
+ 		qcom,mdss-fb-map = <&mdss_fb0>;
+diff --git a/kernel/arch/arm/boot/dts/qcom/spi-panel-ili9342c-cmd.dtsi b/kernel/arch/arm/boot/dts/qcom/spi-panel-ili9342c-cmd.dtsi
+index 5fb2a09..4490eca 100755
+--- a/kernel/arch/arm/boot/dts/qcom/spi-panel-ili9342c-cmd.dtsi
++++ b/kernel/arch/arm/boot/dts/qcom/spi-panel-ili9342c-cmd.dtsi
+@@ -28,7 +28,7 @@
+ 		qcom,mdss-spi-h-right-border = <0>;
+ 		qcom,mdss-spi-v-top-border = <0>;
+ 		qcom,mdss-spi-v-bottom-border = <0>;
+-		qcom,mdss-spi-bpp = <32>;
++		qcom,mdss-spi-bpp = <16>;
+ 		qcom,mdss-spi-on-command = [00 04 C8 FF 93 42
+ 			00 03 C0 12 10
+ 			00 02 C1 01 
+@@ -39,7 +39,7 @@
+ 			00 03 B1 00 18
+ 			00 02 35 00 
+ 			00 02 36 C8
+-			00 02 3A 66 
++			00 02 3A 55 
+ 			00 04 f6 01 00 00 
+ 			00 05 2A 00 00 01 3F 
+ 			00 05 2B 00 00 00 EF
+diff --git a/kernel/drivers/video/msm/mdss/mdp3_ctrl.c b/kernel/drivers/video/msm/mdss/mdp3_ctrl.c
+index ae14182..f5e3728 100755
+--- a/kernel/drivers/video/msm/mdss/mdp3_ctrl.c
++++ b/kernel/drivers/video/msm/mdss/mdp3_ctrl.c
+@@ -217,7 +217,8 @@ void vsync_count_down(void *arg)
+ void mdp3_ctrl_reset_countdown(struct mdp3_session_data *session,
+ 		struct msm_fb_data_type *mfd)
+ {
+-	if (mdp3_ctrl_get_intf_type(mfd) == MDP3_DMA_OUTPUT_SEL_DSI_CMD)
++		if (mdp3_ctrl_get_intf_type(mfd) == MDP3_DMA_OUTPUT_SEL_DSI_CMD ||
++		mdp3_ctrl_get_intf_type(mfd) == MDP3_DMA_OUTPUT_SEL_SPI_CMD)
+ 		atomic_set(&session->vsync_countdown, VSYNC_EXPIRE_TICK);
+ }
+ 
+@@ -226,8 +227,10 @@ static int mdp3_ctrl_vsync_enable(struct msm_fb_data_type *mfd, int enable)
+ 	struct mdp3_session_data *mdp3_session;
+ 	struct mdp3_notification vsync_client;
+ 	struct mdp3_notification *arg = NULL;
++	int intf_type;
+ 
+ 	pr_debug("mdp3_ctrl_vsync_enable =%d\n", enable);
++	intf_type = mdp3_ctrl_get_intf_type(mfd);
+ 	mdp3_session = (struct mdp3_session_data *)mfd->mdp.private1;
+ 	if (!mdp3_session || !mdp3_session->panel || !mdp3_session->dma ||
+ 		!mdp3_session->intf)
+@@ -253,23 +256,28 @@ static int mdp3_ctrl_vsync_enable(struct msm_fb_data_type *mfd, int enable)
+ 		enable = 1;
+ 	}
+ 
+-	mdp3_clk_enable(1, 0);
+-	mdp3_session->dma->vsync_enable(mdp3_session->dma, arg);
+-	mdp3_clk_enable(0, 0);
++	if(intf_type == MDP3_DMA_OUTPUT_SEL_SPI_CMD) {
++		mdp3_spi_vsync_enable(mdp3_session->panel, arg);
++	} else {
++		mdp3_clk_enable(1, 0);
++		mdp3_session->dma->vsync_enable(mdp3_session->dma, arg);
++		mdp3_clk_enable(0, 0);
++	}
+ 
+ 	/*
+ 	 * Need to fake vsync whenever dsi interface is not
+ 	 * active or when dsi clocks are currently off
+ 	 */
+-	if (enable && mdp3_session->status == 1
+-			&& (mdp3_session->vsync_before_commit ||
++		if (mdp3_session->status == 1 
++			&&(intf_type != MDP3_DMA_OUTPUT_SEL_SPI_CMD)
++			&&(mdp3_session->vsync_before_commit ||
+ 			!mdp3_session->intf->active)) {
+ 		mod_timer(&mdp3_session->vsync_timer,
+ 			jiffies + msecs_to_jiffies(mdp3_session->vsync_period));
+ 	} else if (enable && !mdp3_session->clk_on) {
+ 		mdp3_ctrl_reset_countdown(mdp3_session, mfd);
+ 		mdp3_ctrl_clk_enable(mfd, 1);
+-	} else if (!enable) {
++	} else if (!enable && (intf_type != MDP3_DMA_OUTPUT_SEL_SPI_CMD)) {
+ 		del_timer(&mdp3_session->vsync_timer);
+ 	}
+ 
+diff --git a/kernel/drivers/video/msm/mdss/mdss_spi_client.c b/kernel/drivers/video/msm/mdss/mdss_spi_client.c
+index a18cb7d..3bd92ce 100755
+--- a/kernel/drivers/video/msm/mdss/mdss_spi_client.c
++++ b/kernel/drivers/video/msm/mdss/mdss_spi_client.c
+@@ -86,7 +86,7 @@ int mdss_spi_tx_pixel(const void *buf, size_t len)
+ 		return -EINVAL;
+ 	}
+ 
+-	mdss_spi_client->bits_per_word = 24;
++	mdss_spi_client->bits_per_word = 16;
+ 
+ 	spi_message_init(&m);
+ 	spi_message_add_tail(&t, &m);
+@@ -96,6 +96,8 @@ int mdss_spi_tx_pixel(const void *buf, size_t len)
+ }
+ #define LCD_W  320
+ #define LCD_H  240
++#define test_spilcd
++
+ #ifdef test_spilcd
+ void Address_set1(uint32_t x1,uint32_t y1,uint32_t x2,uint32_t y2)
+ {
+@@ -113,23 +115,24 @@ void Address_set1(uint32_t x1,uint32_t y1,uint32_t x2,uint32_t y2)
+ }
+ 
+ 
+-void LCD_Clear1(uint32_t Color)
++void LCD_Clear1(uint16_t Color)
+ {
++	/* char *buff ;
+ 
+-	int  index;	
+-	//char *buff ;//[24] = {0x00,0x00,0xff,0xff,0x00,0x00,0xff,0xff,0x00,0x00,0xff,0xff,0x00,0x00,0xff,0xff,0x00,0x00,0xff,0xff,0x00,0x00,0xff,0xff} ;
+-
+-	//buff = kmalloc(320*240*3,GFP_KERNEL);
++	buff = kmalloc(320*240*2,GFP_KERNEL);
+ 	
+-	//memset(buff, 0, sizeof(buff));
++	memset(buff, 0, sizeof(buff));
+ 
+-	//for(index=0;index<LCD_W*LCD_H;index++)
+-	//	*(buff+index*3+2) = 0xff ;
++	for(index=0;index<LCD_W*LCD_H;index++)
++		*(buff+index*2) = 0xf8 ; */
+ 	
++	int  index;	
++	unsigned char buff[2] = {0} ;
++	buff[0] = Color>>8 ;
++	buff[1] = Color ;
+ 	Address_set1(0,0,LCD_W-1,LCD_H-1);
+ 	for(index=0;index<LCD_W*LCD_H;index++)
+-	mdss_spi_tx_pixel(&Color,3);
+-	
++	mdss_spi_tx_pixel(buff,2);
+ 	
+ }
+ #endif
+@@ -243,7 +246,7 @@ static int mdss_spi_client_probe(struct spi_device *spidev)
+ 	mdss_spi_tx_parameter(para,1);
+ 
+ 	cmd = 0x3A ;mdss_spi_tx_command(&cmd);
+-	para[0] = 0x66; 
++	para[0] = 0x55; 
+ 	mdss_spi_tx_parameter(para,1);
+ 	
+ 	cmd = 0xF6 ;mdss_spi_tx_command(&cmd);
+@@ -255,7 +258,7 @@ static int mdss_spi_client_probe(struct spi_device *spidev)
+ 	pr_err("%s %d eliot mdss_spi_client_probe end\n",
+ 						__func__, __LINE__);
+ 
+-	LCD_Clear1(0xFF0000);
++	LCD_Clear1(0xf800);
+ #endif
+ 	/*
+ #define WHITE         	 0xFFFF
+diff --git a/kernel/drivers/video/msm/mdss/mdss_spi_panel.c b/kernel/drivers/video/msm/mdss/mdss_spi_panel.c
+index b721ff7..ad4476a 100755
+--- a/kernel/drivers/video/msm/mdss/mdss_spi_panel.c
++++ b/kernel/drivers/video/msm/mdss/mdss_spi_panel.c
+@@ -345,13 +345,59 @@ static int mdss_spi_panel_event_handler(struct mdss_panel_data *pdata,
+ 	pr_debug("%s-:event=%d, rc=%d\n", __func__, event, rc);
+ 	return rc;
+ }
++int is_spi_panel_continuous_splash_on(struct mdss_panel_data *pdata)
++{
++	int i = 0, voltage = 0;
++	struct dss_vreg *vreg;
++	int num_vreg;
++	struct spi_panel_data *ctrl_pdata = NULL;
++
++	ctrl_pdata = container_of(pdata, struct spi_panel_data,
++			panel_data);
++	vreg = ctrl_pdata->panel_power_data.vreg_config;
++	num_vreg = ctrl_pdata->panel_power_data.num_vreg;
++
++	for (i = 0; i < num_vreg; i++) {
++		if (regulator_is_enabled(vreg[i].vreg) <= 0)
++			return false;
++		voltage = regulator_get_voltage(vreg[i].vreg);
++		if (!(voltage >= vreg[i].min_voltage &&
++			 voltage <= vreg[i].max_voltage))
++			return false;
++	}
++
++	return true;
++}
++
++static void enable_spi_panel_te_irq(struct spi_panel_data *ctrl_pdata,
++							bool enable)
++{
++	static bool is_enabled = true;
++
++	if (is_enabled == enable)
++		return;
++
++	if (!gpio_is_valid(ctrl_pdata->disp_te_gpio)) {
++		pr_err("%s:%d,SPI panel TE GPIO not configured\n",
++			   __func__, __LINE__);
++		return;
++	}
++
++	if (enable)
++		enable_irq(gpio_to_irq(ctrl_pdata->disp_te_gpio));
++	else
++		disable_irq(gpio_to_irq(ctrl_pdata->disp_te_gpio));
++
++	is_enabled = enable;
++}
++
+ 
+ int mdss_spi_panel_kickoff(struct mdss_panel_data *pdata,
+ 			char *buf, int len, int dma_stride)
+ {
+ 	struct spi_panel_data *ctrl_pdata = NULL;
+ 	char *tx_buf;
+-	int rc = 0,i;
++	int rc = 0;//,i=0;
+ 	int panel_yres;
+ 	int panel_xres;
+ 	int padding_length = 0;
+@@ -383,16 +429,15 @@ int mdss_spi_panel_kickoff(struct mdss_panel_data *pdata,
+ 		scan_count++;
+ 	}
+ 	/*
+-	for(i=0;i<32;i++)
++	for(i=0;i<12;i++)
+ 	{
+-		*(tx_buf+4*i) = 0x00;
+-		if(i%4==0)
+-			printk(KERN_ERR "P");
+-		printk(KERN_ERR "%x ",*(tx_buf+i));
++		if(i%3==0)
++			printk(KERN_ERR "=\n");
++		printk(KERN_ERR "%x-\n",*(tx_buf+i));
+ 		
+ 	}*/
+ 	/*rgba8888 ----> abgr8888*/
+-	
++	/*
+ 	for(i=0;i<320*240;i++)
+ 	{
+ 		unsigned char temp1,temp2,temp3 ;
+@@ -404,15 +449,16 @@ int mdss_spi_panel_kickoff(struct mdss_panel_data *pdata,
+ 		*(tx_buf+4*i+1) = temp3 ;
+ 
+ 	}
+-	
++	*/
++	/*rgba8888 ----> abgr8888*/
+ 	INIT_COMPLETION(ctrl_pdata->spi_panel_te);
+-
++	enable_spi_panel_te_irq(ctrl_pdata, true);
+ 	rc = wait_for_completion_timeout(&ctrl_pdata->spi_panel_te,
+ 				   msecs_to_jiffies(SPI_PANEL_TE_TIMEOUT));
+ 
+ 	if (rc == 0){
+ 		pr_err("wait panel TE time out\n");
+-		return 0;
++		//return 0;
+ 	}
+ 
+ 	rc = mdss_spi_tx_pixel(tx_buf, ctrl_pdata->byte_pre_frame);
+@@ -446,7 +492,7 @@ int mdss_spi_panel_on(struct mdss_panel_data *pdata)
+ 			msleep(ctrl->on_cmds.cmds[i].dchdr.wait);
+ 	}
+ 
+-	pinfo->blank_state = MDSS_PANEL_BLANK_UNBLANK;
++	//pinfo->blank_state = MDSS_PANEL_BLANK_UNBLANK;
+ 	pr_debug("%s:-\n", __func__);
+ 
+ 	return 0;
+@@ -480,7 +526,7 @@ static int mdss_spi_panel_off(struct mdss_panel_data *pdata)
+ 			msleep(ctrl->off_cmds.cmds[i].dchdr.wait);
+ 	}
+ 
+-	pinfo->blank_state = MDSS_PANEL_BLANK_BLANK;
++	//pinfo->blank_state = MDSS_PANEL_BLANK_BLANK;
+ 	pr_debug("%s:-\n", __func__);
+ 	return 0;
+ }
+@@ -1011,7 +1057,7 @@ int mdss_spi_panel_init(struct device_node *node,
+ 	}
+ 
+ 	ctrl_pdata->byte_pre_frame = pinfo->xres * pinfo->yres * pinfo->bpp/8;
+-printk(KERN_ERR "eliot ctrl_pdata->byte_pre_frame = %d,bpp = %d\n",ctrl_pdata->byte_pre_frame,pinfo->bpp);
++//printk(KERN_ERR "eliot ctrl_pdata->byte_pre_frame = %d,bpp = %d\n",ctrl_pdata->byte_pre_frame,pinfo->bpp);
+ 	ctrl_pdata->tx_buf = kmalloc(ctrl_pdata->byte_pre_frame, GFP_KERNEL);
+ 	if (!ctrl_pdata->tx_buf) {
+ 		pr_err("%s: FAILED: cannot alloc tx buf for spi panel\n",
+@@ -1022,7 +1068,7 @@ printk(KERN_ERR "eliot ctrl_pdata->byte_pre_frame = %d,bpp = %d\n",ctrl_pdata->b
+ 
+ 	if (!cmd_cfg_cont_splash)
+ 		pinfo->cont_splash_enabled = false;
+-
++	//pinfo->cont_splash_enabled = true;
+ 	pr_info("%s: Continuous splash %s\n", __func__,
+ 		pinfo->cont_splash_enabled ? "enabled" : "disabled");
+ 
+@@ -1091,17 +1137,56 @@ static int mdss_spi_panel_regulator_init(struct platform_device *pdev)
+ }
+ irqreturn_t spi_panel_te_handler(int irq, void *data)
+ {
+-	struct spi_panel_data *ctrl_pdata =
+-		(struct spi_panel_data *)data;
+ 
++ 	struct spi_panel_data *ctrl_pdata = (struct spi_panel_data *)data;
++ 	static int count = 2;
+ 	if (!ctrl_pdata) {
+ 		pr_err("%s: SPI display not available\n", __func__);
+ 		return IRQ_HANDLED;
+ 	}
+ 	complete(&ctrl_pdata->spi_panel_te);
++	
++
++ 	if (ctrl_pdata->vsync_client.handler && !(--count)) {
++ 		ctrl_pdata->vsync_client.handler(ctrl_pdata->vsync_client.arg);
++ 		count = 2;
++ 	}
+ 	return IRQ_HANDLED;
+ }
++void mdp3_spi_vsync_enable(struct mdss_panel_data *pdata,
++				struct mdp3_notification *vsync_client)
++{
++	int updated = 0;
++	struct spi_panel_data *ctrl_pdata = NULL;
+ 
++	if (pdata == NULL) {
++		pr_err("%s: Invalid input data\n", __func__);
++		return;
++	}
++
++	ctrl_pdata = container_of(pdata, struct spi_panel_data,
++				panel_data);
++
++	if (vsync_client) {
++		if (ctrl_pdata->vsync_client.handler != vsync_client->handler) {
++			ctrl_pdata->vsync_client = *vsync_client;
++			updated = 1;
++		}
++	} else {
++		if (ctrl_pdata->vsync_client.handler) {
++			ctrl_pdata->vsync_client.handler = NULL;
++			ctrl_pdata->vsync_client.arg = NULL;
++			updated = 1;
++		}
++	}
++
++	if (updated) {
++		if (vsync_client && vsync_client->handler)
++			enable_spi_panel_te_irq(ctrl_pdata, true);
++		else
++			enable_spi_panel_te_irq(ctrl_pdata, false);
++	}
++}
+ 
+ static struct device_node *mdss_spi_pref_prim_panel(
+ 		struct platform_device *pdev)
+@@ -1176,7 +1261,7 @@ int spi_panel_device_register(struct device_node *pan_node,
+ 		}
+ 		if (ctrl_pdata->bklt_ctrl == BL_PWM)
+ 			ctrl_pdata->pwm_enabled = 1;
+-		pinfo->blank_state = MDSS_PANEL_BLANK_UNBLANK;
++		//pinfo->blank_state = MDSS_PANEL_BLANK_UNBLANK;
+ 		ctrl_pdata->ctrl_state |=
+ 			(CTRL_STATE_PANEL_INIT | CTRL_STATE_MDP_ACTIVE);
+ 	} else {
+diff --git a/kernel/drivers/video/msm/mdss/mdss_spi_panel.h b/kernel/drivers/video/msm/mdss/mdss_spi_panel.h
+index 5434d71..d0fc859 100755
+--- a/kernel/drivers/video/msm/mdss/mdss_spi_panel.h
++++ b/kernel/drivers/video/msm/mdss/mdss_spi_panel.h
+@@ -22,6 +22,7 @@
+ #include <linux/gpio.h>
+ 
+ #include "mdss_panel.h"
++#include "mdp3_dma.h"
+ 
+ #define MDSS_MAX_BL_BRIGHTNESS 255
+ 
+@@ -83,6 +84,10 @@ struct spi_panel_data {
+ 	struct spi_pinctrl_res pin_res;
+ 	struct dss_module_power panel_power_data;
+ 	struct completion spi_panel_te;
++	
++	struct mdp3_notification vsync_client;
++	unsigned int vsync_status;
++	
+ 	int byte_pre_frame;
+ 	char *tx_buf;
+ 	u8 ctrl_state;
+@@ -103,12 +108,24 @@ struct spi_panel_data {
+ };
+ int mdss_spi_panel_kickoff(struct mdss_panel_data *pdata,
+ 				char *buf, int len, int stride);
++int is_spi_panel_continuous_splash_on(struct mdss_panel_data *pdata);
++void mdp3_spi_vsync_enable(struct mdss_panel_data *pdata,
++				struct mdp3_notification *vsync_client);
+ #else
+ 
+ int mdss_spi_panel_kickoff(struct mdss_panel_data *pdata,
+ 				char *buf, int len, int stride){
+ 	return 0;
+ }
++static inline int is_spi_panel_continuous_splash_on(
++				struct mdss_panel_data *pdata)
++{
++	return 0;
++}
++static inline int mdp3_spi_vsync_enable(struct mdss_panel_data *pdata,
++				struct mdp3_notification *vsync_client){
++	return 0;
++}
+ 
+ #endif/* End of CONFIG_FB_MSM_MDSS_SPI_PANEL && ONFIG_SPI_QUP */
+ 

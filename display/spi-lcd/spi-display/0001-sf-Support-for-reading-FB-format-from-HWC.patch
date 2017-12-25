@@ -1,0 +1,114 @@
+From 5020cdb57a42028331a316c00e93ebb197185820 Mon Sep 17 00:00:00 2001
+From: Wang Xudong <wxudong@qti.qualcomm.com>
+Date: Wed, 17 May 2017 14:45:36 +0800
+Subject: [PATCH 1/2] sf: Support for reading FB format from HWC
+
+Instead of assuming RGBA_8888 format for FB, add support
+for reading FB format from HWC.
+In low tier targets, Bandwidth required by various H/W that access
+FB can be reduced by using 24 or 16 bpp FB formats(eg: RGB_888, RGB_565)
+instead of RGBA_8888, which improves the system performance.
+
+Change-Id: I5631b275c8129820f1d9c574d876981dc34a7478
+---
+ services/surfaceflinger/Android.mk                      |  3 +++
+ .../surfaceflinger/DisplayHardware/HWComposer_hwc1.cpp  | 17 +++++++++++++++++
+ services/surfaceflinger/RenderEngine/RenderEngine.cpp   | 10 ++++++++--
+ 3 files changed, 28 insertions(+), 2 deletions(-)
+
+diff --git a/services/surfaceflinger/Android.mk b/services/surfaceflinger/Android.mk
+index 1318057..5880404 100644
+--- a/services/surfaceflinger/Android.mk
++++ b/services/surfaceflinger/Android.mk
+@@ -160,6 +160,9 @@ ifeq ($(TARGET_USES_QCOM_BSP), true)
+   else
+     LOCAL_C_INCLUDES += $(TARGET_OUT_HEADERS)/qcom/display
+   endif
++ifeq ($(GET_FRAMEBUFFER_FORMAT_FROM_HWC),true)
++    LOCAL_CFLAGS += -DGET_FRAMEBUFFER_FORMAT_FROM_HWC
++endif
+     LOCAL_SHARED_LIBRARIES += libqdutils
+     LOCAL_SHARED_LIBRARIES += libqdMetaData
+     LOCAL_CFLAGS += -DQTI_BSP
+diff --git a/services/surfaceflinger/DisplayHardware/HWComposer_hwc1.cpp b/services/surfaceflinger/DisplayHardware/HWComposer_hwc1.cpp
+index 16035d3..8a21e26 100644
+--- a/services/surfaceflinger/DisplayHardware/HWComposer_hwc1.cpp
++++ b/services/surfaceflinger/DisplayHardware/HWComposer_hwc1.cpp
+@@ -351,6 +351,9 @@ static const uint32_t DISPLAY_ATTRIBUTES[] = {
+     HWC_DISPLAY_HEIGHT,
+     HWC_DISPLAY_DPI_X,
+     HWC_DISPLAY_DPI_Y,
++#ifdef GET_FRAMEBUFFER_FORMAT_FROM_HWC
++    HWC_DISPLAY_FBFORMAT,
++#endif
+     HWC_DISPLAY_COLOR_TRANSFORM,
+     HWC_DISPLAY_NO_ATTRIBUTE,
+ };
+@@ -362,6 +365,9 @@ static const uint32_t PRE_HWC15_DISPLAY_ATTRIBUTES[] = {
+     HWC_DISPLAY_HEIGHT,
+     HWC_DISPLAY_DPI_X,
+     HWC_DISPLAY_DPI_Y,
++#ifdef GET_FRAMEBUFFER_FORMAT_FROM_HWC
++    HWC_DISPLAY_FBFORMAT,
++#endif
+     HWC_DISPLAY_NO_ATTRIBUTE,
+ };
+ 
+@@ -422,6 +428,11 @@ status_t HWComposer::queryDisplayProperties(int disp) {
+                 case HWC_DISPLAY_DPI_Y:
+                     config.ydpi = values[i] / 1000.0f;
+                     break;
++	#ifdef GET_FRAMEBUFFER_FORMAT_FROM_HWC
++		case HWC_DISPLAY_FBFORMAT:
++		    mDisplayData[disp].format = values[i];
++		    break;
++	#endif
+                 case HWC_DISPLAY_COLOR_TRANSFORM:
+                     config.colorMode = static_cast<android_color_mode_t>(values[i]);
+                     break;
+@@ -442,7 +453,9 @@ status_t HWComposer::queryDisplayProperties(int disp) {
+     }
+ 
+     // FIXME: what should we set the format to?
++#ifndef GET_FRAMEBUFFER_FORMAT_FROM_HWC
+     mDisplayData[disp].format = HAL_PIXEL_FORMAT_RGBA_8888;
++#endif
+     mDisplayData[disp].connected = true;
+     return NO_ERROR;
+ }
+@@ -889,7 +902,11 @@ int HWComposer::getVisualID() const {
+         // FIXME: temporary hack until HAL_PIXEL_FORMAT_IMPLEMENTATION_DEFINED
+         // is supported by the implementation. we can only be in this case
+         // if we have HWC 1.1
++#ifdef GET_FRAMEBUFFER_FORMAT_FROM_HWC
++	return mDisplayData[HWC_DISPLAY_PRIMARY].format;
++#else
+         return HAL_PIXEL_FORMAT_RGBA_8888;
++#endif
+         //return HAL_PIXEL_FORMAT_IMPLEMENTATION_DEFINED;
+     } else {
+         return mFbDev->format;
+diff --git a/services/surfaceflinger/RenderEngine/RenderEngine.cpp b/services/surfaceflinger/RenderEngine/RenderEngine.cpp
+index d6a032f..dded007 100644
+--- a/services/surfaceflinger/RenderEngine/RenderEngine.cpp
++++ b/services/surfaceflinger/RenderEngine/RenderEngine.cpp
+@@ -380,8 +380,14 @@ static status_t selectEGLConfig(EGLDisplay display, EGLint format,
+         attribs[EGL_RED_SIZE]                   = 8;
+         attribs[EGL_GREEN_SIZE]                 = 8;
+         attribs[EGL_BLUE_SIZE]                  = 8;
+-        wantedAttribute                         = EGL_NONE;
+-        wantedAttributeValue                    = EGL_NONE;
++
++	if (format != HAL_PIXEL_FORMAT_RGBA_8888) {
++		wantedAttribute                     = EGL_NATIVE_VISUAL_ID;
++		wantedAttributeValue                = format;
++	} else {
++		wantedAttribute                     = EGL_NONE;
++		wantedAttributeValue                = EGL_NONE;
++	}
+     } else {
+         // if no renderable type specified, fallback to a simplified query
+         wantedAttribute                         = EGL_NATIVE_VISUAL_ID;
+-- 
+1.9.1
+
