@@ -1,0 +1,23 @@
+Created By: Xudong Wang (12/26/2017 10:12 PM)
+msm3.10 kernel patch, one by one: 
+
+https://source.codeaurora.org/quic/lc/kernel/msm-3.10/commit/?h=LNX.LA.3.7.1.1_rb1.51&id=6e93782a48cb9f51b26bb7132544f7809c52aa19 
+
+https://source.codeaurora.org/quic/lc/kernel/msm-3.10/commit/?h=LNX.LA.3.7.1.1_rb1.51&id=5605307b79d9c650ddab593554afa07eb5725c4b 
+
+https://source.codeaurora.org/quic/lc/kernel/msm-3.10/commit/?h=LNX.LA.3.7.1.1_rb1.51&id=71fac79dbabf77c1fc0fc4993a0e3a43452bf77e 
+
+https://source.codeaurora.org/quic/lc/kernel/msm-3.10/commit/?h=LNX.LA.3.7.1.1_rb1.51&id=3a173143a48da31feb093d8013248c411dd1286f 
+
+https://source.codeaurora.org/quic/lc/kernel/msm-3.10/commit/?h=LNX.LA.3.7.1.1_rb1.51&id=fd18f911852f791572e74ff4c765b5f68a9c6267 
+
+https://source.codeaurora.org/quic/lc/kernel/msm-3.10/commit/?h=LNX.LA.3.7.1.1_rb1.51&id=aaa2da0bf8b27138a50adac50b98b937a8416c4a 
+
+https://source.codeaurora.org/quic/lc/kernel/msm-3.10/commit/?h=LNX.LA.3.7.1.1_rb1.51&id=8c02b9dc020190b85701a997aa6f4b217c7fe553
+
+lk: 
+
+https://source.codeaurora.org/quic/femto/kernel/lk/commit/?h=LNX.LA.3.7.1.1_rb1.51&id=acfaf59c792ee516e3eca7c566fdcb4f99351eb0 
+https://source.codeaurora.org/quic/femto/kernel/lk/commit/?h=LNX.LA.3.7.1.1_rb1.51&id=f0dabf8440c9067ab118135ac55e4ad146ae81d6 
+https://source.codeaurora.org/quic/femto/kernel/lk/commit/?h=LNX.LA.3.7.1.1_rb1.51&id=7f7ee36fc63f9d38d680ae3fe82f67505d39e9fe 
+https://source.codeaurora.org/quic/femto/kernel/lk/commit/?h=LNX.LA.3.7.1.1_rb1.51&id=be35cbc49022806f9f4604a6ff9eacea87cd7a56
